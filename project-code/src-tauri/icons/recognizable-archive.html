@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recognizable WhatsApp Archive Icon</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .icon-container {
+            text-align: center;
+        }
+        .icon {
+            width: 512px;
+            height: 512px;
+            background: #25D366;
+            border-radius: 20%;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .archive-box {
+            width: 300px;
+            height: 240px;
+            position: relative;
+        }
+        .box-body {
+            position: absolute;
+            width: 100%;
+            height: 180px;
+            bottom: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .box-lid {
+            position: absolute;
+            width: 100%;
+            height: 80px;
+            top: 0;
+            background: white;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
+            transform-origin: bottom;
+            transform: rotateX(-20deg);
+        }
+        .box-handle {
+            position: absolute;
+            width: 60px;
+            height: 20px;
+            background: rgba(37, 211, 102, 0.2);
+            border: 3px solid #25D366;
+            border-radius: 10px;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .whatsapp-logo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            background: #25D366;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .whatsapp-logo::before {
+            content: '';
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+        }
+        .whatsapp-logo::after {
+            content: '';
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: #25D366;
+            border-radius: 25px 25px 25px 5px;
+            transform: rotate(-15deg);
+        }
+        .whatsapp-logo::before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 15px;
+            right: 15px;
+        }
+        .archive-label {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Arial Black', sans-serif;
+            font-size: 20px;
+            font-weight: 900;
+            color: #25D366;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        .chat-bubbles {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .bubble {
+            width: 25px;
+            height: 18px;
+            background: rgba(37, 211, 102, 0.3);
+            border-radius: 9px;
+            position: relative;
+        }
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            right: 6px;
+            width: 8px;
+            height: 8px;
+            background: rgba(37, 211, 102, 0.3);
+            border-radius: 0 0 4px 4px;
+            transform: rotate(45deg);
+        }
+        .instructions {
+            margin-top: 30px;
+            padding: 25px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            max-width: 500px;
+        }
+        h2 {
+            color: #25D366;
+            margin-top: 0;
+        }
+        .features {
+            text-align: left;
+            display: inline-block;
+            margin: 15px 0;
+        }
+        .features li {
+            margin: 8px 0;
+            color: #555;
+        }
+        button {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: #128C7E;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="icon-container">
+        <div class="icon" id="icon">
+            <div class="archive-box">
+                <div class="box-lid">
+                    <div class="box-handle"></div>
+                    <div class="chat-bubbles">
+                        <div class="bubble"></div>
+                        <div class="bubble"></div>
+                        <div class="bubble"></div>
+                    </div>
+                </div>
+                <div class="box-body">
+                    <div class="whatsapp-logo"></div>
+                    <div class="archive-label">ARCHIVE</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h2>Classic Archive Box</h2>
+            <p>Traditional archive box with clear visual elements:</p>
+            <ul class="features">
+                <li>📦 Classic box with opening lid</li>
+                <li>🎯 Handle on top for carrying</li>
+                <li>📱 WhatsApp logo prominently displayed</li>
+                <li>💬 Chat bubbles on the lid</li>
+                <li>🏷️ Bold "ARCHIVE" label</li>
+                <li>🎨 Traditional storage box aesthetic</li>
+            </ul>
+            <p><strong>Instantly recognizable:</strong> Clear archive box shape that everyone understands</p>
+            <button onclick="window.print()">📸 Screenshot</button>
+            <button onclick="downloadSVG()">⬇️ Download SVG</button>
+        </div>
+    </div>
+
+    <script>
+        function downloadSVG() {
+            const svg = `<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="512" height="512" rx="102" fill="#25D366"/>
+                
+                <!-- Archive box shadow -->
+                <rect x="116" y="176" width="300" height="180" rx="8" fill="black" opacity="0.1" transform="translate(4, 4)"/>
+                
+                <!-- Box body -->
+                <rect x="116" y="176" width="300" height="180" rx="8" fill="white"/>
+                
+                <!-- Box lid -->
+                <path d="M116 176 L416 176 L416 226 L116 226 Z" fill="white"/>
+                
+                <!-- Box handle -->
+                <rect x="236" y="196" width="60" height="20" rx="10" fill="none" stroke="#25D366" stroke-width="3"/>
+                <rect x="236" y="196" width="60" height="20" rx="10" fill="rgba(37, 211, 102, 0.2)"/>
+                
+                <!-- Chat bubbles on lid -->
+                <rect x="146" y="196" width="25" height="18" rx="9" fill="rgba(37, 211, 102, 0.3)"/>
+                <path d="M166 209 L170 213 L166 213 Z" fill="rgba(37, 211, 102, 0.3)"/>
+                
+                <rect x="243" y="196" width="25" height="18" rx="9" fill="rgba(37, 211, 102, 0.3)"/>
+                <path d="M263 209 L267 213 L263 213 Z" fill="rgba(37, 211, 102, 0.3)"/>
+                
+                <rect x="341" y="196" width="25" height="18" rx="9" fill="rgba(37, 211, 102, 0.3)"/>
+                <path d="M361 209 L365 213 L361 213 Z" fill="rgba(37, 211, 102, 0.3)"/>
+                
+                <!-- WhatsApp logo -->
+                <circle cx="256" cy="266" r="50" fill="#25D366"/>
+                <circle cx="256" cy="266" r="40" fill="white"/>
+                <circle cx="256" cy="266" r="25" fill="#25D366"/>
+                <circle cx="271" cy="251" r="10" fill="white"/>
+                
+                <!-- Archive text -->
+                <text x="256" y="330" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="20" font-weight="900" fill="#25D366" text-transform="uppercase" letter-spacing="3">ARCHIVE</text>
+            </svg>`;
+            
+            const blob = new Blob([svg], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'recognizable-archive-icon.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
