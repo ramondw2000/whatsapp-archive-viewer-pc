@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WhatsApp Archive Viewer - Icon Generator</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        .icon-container {
+            text-align: center;
+        }
+        .icon {
+            width: 512px;
+            height: 512px;
+            background: #25D366;
+            border-radius: 25%;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .phone {
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            width: 80%;
+            height: 80%;
+            border: 8px solid white;
+            border-radius: 20px;
+            box-sizing: border-box;
+        }
+        .chat-bubble {
+            position: absolute;
+            background: white;
+            border-radius: 15px;
+        }
+        .chat1 {
+            top: 20%;
+            left: 15%;
+            width: 40%;
+            height: 15%;
+        }
+        .chat2 {
+            top: 40%;
+            left: 15%;
+            width: 30%;
+            height: 12%;
+        }
+        .archive {
+            position: absolute;
+            top: 35%;
+            left: 35%;
+            width: 30%;
+            height: 30%;
+            background: #25D366;
+            border: 4px solid white;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .archive-handle {
+            position: absolute;
+            top: 42%;
+            left: 42%;
+            width: 16%;
+            height: 8%;
+            background: white;
+            border-radius: 4px;
+        }
+        .emoji {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .emoji1 { top: 5%; left: 5%; background: #FFD93D; }
+        .emoji2 { top: 5%; right: 5%; background: #6BCF7F; }
+        .emoji3 { bottom: 5%; left: 5%; background: #FF6B6B; }
+        .emoji4 { bottom: 5%; right: 5%; background: #4ECDC4; }
+        
+        .instructions {
+            margin-top: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #128C7E;
+        }
+    </style>
+</head>
+<body>
+    <div class="icon-container">
+        <div class="icon" id="icon">
+            <div class="phone"></div>
+            <div class="chat-bubble chat1"></div>
+            <div class="chat-bubble chat2"></div>
+            <div class="archive">
+                <div class="archive-handle"></div>
+            </div>
+            <div class="emoji emoji1">😊</div>
+            <div class="emoji emoji2">📱</div>
+            <div class="emoji emoji3">💬</div>
+            <div class="emoji emoji4">📁</div>
+        </div>
+        
+        <div class="instructions">
+            <h2>WhatsApp Archive Viewer Icon</h2>
+            <p>This is a fun app icon featuring:</p>
+            <ul style="text-align: left; display: inline-block;">
+                <li>🟢 WhatsApp green background</li>
+                <li>📱 Phone outline</li>
+                <li>💬 Chat bubbles</li>
+                <li>📁 Archive symbol</li>
+                <li>😊 Fun emoji corners</li>
+            </ul>
+            <p><strong>To save as icon:</strong></p>
+            <ol style="text-align: left; display: inline-block;">
+                <li>Take a screenshot of the icon above</li>
+                <li>Crop to 512x512 pixels</li>
+                <li>Save as PNG</li>
+                <li>Use online converter to create ICO/ICNS files</li>
+            </ol>
+            <button onclick="window.print()">Print/Screenshot</button>
+            <button onclick="downloadIcon()">Download SVG</button>
+        </div>
+    </div>
+
+    <script>
+        function downloadIcon() {
+            const svg = `<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <rect width="512" height="512" rx="128" fill="#25D366"/>
+                <rect x="51" y="51" width="410" height="410" rx="20" fill="none" stroke="white" stroke-width="16"/>
+                <rect x="77" y="102" width="164" height="77" rx="15" fill="white"/>
+                <rect x="77" y="205" width="123" height="62" rx="15" fill="white"/>
+                <rect x="179" y="179" width="154" height="154" rx="8" fill="#25D366" stroke="white" stroke-width="8"/>
+                <rect x="215" y="215" width="82" height="41" rx="4" fill="white"/>
+                <circle cx="77" cy="77" r="30" fill="#FFD93D"/>
+                <circle cx="435" cy="77" r="30" fill="#6BCF7F"/>
+                <circle cx="77" cy="435" r="30" fill="#FF6B6B"/>
+                <circle cx="435" cy="435" r="30" fill="#4ECDC4"/>
+                <text x="77" y="85" text-anchor="middle" font-size="20" fill="black">😊</text>
+                <text x="435" y="85" text-anchor="middle" font-size="20" fill="black">📱</text>
+                <text x="77" y="443" text-anchor="middle" font-size="20" fill="black">💬</text>
+                <text x="435" y="443" text-anchor="middle" font-size="20" fill="black">📁</text>
+            </svg>`;
+            
+            const blob = new Blob([svg], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'whatsapp-archive-viewer-icon.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

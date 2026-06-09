@@ -1,0 +1,49 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#25a244"/>
+      <stop offset="100%" stop-color="#0d5c28"/>
+    </linearGradient>
+    <filter id="fShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.40"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <!-- Folder tab — pure white -->
+  <rect x="166" y="110" width="116" height="36" rx="12" fill="white" opacity="0.92"/>
+  <rect x="282" y="124" width="52" height="22" fill="white" opacity="0.92"/>
+
+  <!-- Folder body — pure white, high contrast -->
+  <rect x="74" y="144" width="364" height="260" rx="18" fill="white" filter="url(#fShadow)"/>
+
+  <!-- Bold green lines on folder — kept thin so phone dominates -->
+  <rect x="114" y="174" width="284" height="20" rx="10" fill="#1a7a3a" opacity="0.80"/>
+  <rect x="114" y="206" width="220" height="20" rx="10" fill="#1a7a3a" opacity="0.45"/>
+
+  <!-- Phone handset — large, centered, very bold and defined -->
+  <!-- Scale: handset spans roughly 190x190px centered at 256,310 -->
+  <path d="
+    M318,366
+    C312,374 303,378 293,376
+    C271,371 244,356 224,335
+    C204,315 190,289 186,267
+    C184,257 188,248 196,242
+    L208,231
+    C214,225 224,225 230,231
+    L252,256
+    C258,262 258,272 252,278
+    L242,288
+    C240,291 240,295 243,298
+    C252,308 263,319 274,327
+    C277,330 281,329 283,327
+    L293,316
+    C299,310 309,310 315,316
+    L339,338
+    C345,344 345,354 339,360
+    Z
+  " fill="#1a7a3a"/>
+
+</svg>

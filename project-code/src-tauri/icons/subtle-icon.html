@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Subtle WhatsApp Archive Viewer Icon</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .icon-container {
+            text-align: center;
+        }
+        .icon {
+            width: 512px;
+            height: 512px;
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            border-radius: 20%;
+            position: relative;
+            box-shadow: 0 8px 32px rgba(37, 211, 102, 0.2);
+            overflow: hidden;
+        }
+        .icon::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        .content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 70%;
+        }
+        .folder {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 40%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px 8px 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .folder::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: 0;
+            width: 100%;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px 8px 0 0;
+        }
+        .folder-tab {
+            position: absolute;
+            top: -12px;
+            left: 20%;
+            width: 30%;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 4px 4px 0 0;
+        }
+        .chat-bubble {
+            position: absolute;
+            background: white;
+            border-radius: 12px;
+            opacity: 0.9;
+        }
+        .chat1 {
+            top: 15%;
+            left: 10%;
+            width: 35%;
+            height: 12%;
+        }
+        .chat2 {
+            top: 30%;
+            right: 10%;
+            width: 30%;
+            height: 10%;
+        }
+        .chat3 {
+            top: 45%;
+            left: 15%;
+            width: 25%;
+            height: 8%;
+        }
+        .chat-dots {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 8px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: #25D366;
+            border-radius: 50%;
+        }
+        .whatsapp-splash {
+            position: absolute;
+            top: 10%;
+            right: 10%;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+        .instructions {
+            margin-top: 30px;
+            padding: 25px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            max-width: 500px;
+        }
+        h2 {
+            color: #25D366;
+            margin-top: 0;
+        }
+        .features {
+            text-align: left;
+            display: inline-block;
+            margin: 15px 0;
+        }
+        .features li {
+            margin: 8px 0;
+            color: #555;
+        }
+        button {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background: #128C7E;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="icon-container">
+        <div class="icon" id="icon">
+            <div class="content">
+                <div class="folder">
+                    <div class="folder-tab"></div>
+                    <div class="chat-dots">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                </div>
+                <div class="chat-bubble chat1"></div>
+                <div class="chat-bubble chat2"></div>
+                <div class="chat-bubble chat3"></div>
+                <div class="whatsapp-splash">💬</div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h2>Subtle Archive Icon</h2>
+            <p>A more elegant and understated design featuring:</p>
+            <ul class="features">
+                <li>📁 Clean folder with chat dots</li>
+                <li>💬 Floating chat bubbles</li>
+                <li>✨ Subtle gradient background</li>
+                <li>🌟 Gentle shimmer effect</li>
+                <li>🎨 Professional yet friendly</li>
+            </ul>
+            <p><strong>Minimalist approach:</strong> Focus on archive functionality with subtle WhatsApp elements</p>
+            <button onclick="window.print()">📸 Screenshot</button>
+            <button onclick="downloadSVG()">⬇️ Download SVG</button>
+        </div>
+    </div>
+
+    <script>
+        function downloadSVG() {
+            const svg = `<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#25D366"/>
+                        <stop offset="100%" style="stop-color:#128C7E"/>
+                    </linearGradient>
+                    <linearGradient id="shimmer" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="30%" style="stop-color:transparent"/>
+                        <stop offset="50%" style="stop-color:white;stop-opacity:0.1"/>
+                        <stop offset="70%" style="stop-color:transparent"/>
+                    </linearGradient>
+                </defs>
+                <rect width="512" height="512" rx="102" fill="url(#bg)"/>
+                <rect width="512" height="512" rx="102" fill="url(#shimmer)" opacity="0.5"/>
+                
+                <!-- Folder -->
+                <rect x="102" y="307" width="307" height="154" rx="8" fill="white" opacity="0.95"/>
+                <rect x="102" y="291" width="307" height="32" fill="white" opacity="0.95"/>
+                <rect x="205" y="283" width="102" height="20" rx="4" fill="white" opacity="0.95"/>
+                
+                <!-- Chat dots in folder -->
+                <circle cx="205" cy="384" r="6" fill="#25D366"/>
+                <circle cx="256" cy="384" r="6" fill="#25D366"/>
+                <circle cx="307" cy="384" r="6" fill="#25D366"/>
+                
+                <!-- Chat bubbles -->
+                <rect x="51" y="77" width="179" height="61" rx="12" fill="white" opacity="0.9"/>
+                <rect x="307" y="154" width="154" height="51" rx="12" fill="white" opacity="0.9"/>
+                <rect x="77" y="230" width="128" height="41" rx="12" fill="white" opacity="0.9"/>
+                
+                <!-- WhatsApp splash -->
+                <circle cx="410" cy="102" r="40" fill="white" opacity="0.2"/>
+                <text x="410" y="115" text-anchor="middle" font-size="32" fill="white">💬</text>
+            </svg>`;
+            
+            const blob = new Blob([svg], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'subtle-whatsapp-archive-icon.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

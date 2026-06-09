@@ -1,0 +1,45 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#25D366"/>
+  
+  <!-- WhatsApp phone outline -->
+  <path d="M160 120c-10 0-20 10-20 20v200c0 10 10 20 20 20h200c10 0 20-10 20-20V140c0-10-10-20-20-20H160z" 
+        fill="none" stroke="white" stroke-width="8"/>
+  
+  <!-- Chat bubble -->
+  <path d="M180 180h150v60H180z" fill="white"/>
+  <path d="M180 260h100v40H180z" fill="white"/>
+  
+  <!-- Archive box symbol -->
+  <rect x="220" y="200" width="80" height="60" fill="#25D366" stroke="white" stroke-width="4"/>
+  <path d="M240 220h40v20h-40z" fill="white"/>
+  <path d="M235 245h50v10h-50z" fill="white"/>
+  
+  <!-- Fun emoji elements -->
+  <circle cx="140" cy="140" r="15" fill="#FFD93D"/>
+  <circle cx="380" cy="140" r="15" fill="#6BCF7F"/>
+  <circle cx="140" cy="380" r="15" fill="#FF6B6B"/>
+  <circle cx="380" cy="380" r="15" fill="#4ECDC4"/>
+  
+  <!-- Smiley faces on circles -->
+  <circle cx="135" cy="137" r="2" fill="#333"/>
+  <circle cx="145" cy="137" r="2" fill="#333"/>
+  <path d="M132 145c0-3 6-3 6 0" fill="none" stroke="#333" stroke-width="2"/>
+  
+  <circle cx="375" cy="137" r="2" fill="#333"/>
+  <circle cx="385" cy="137" r="2" fill="#333"/>
+  <path d="M372 145c0-3 6-3 6 0" fill="none" stroke="#333" stroke-width="2"/>
+  
+  <circle cx="135" cy="377" r="2" fill="#333"/>
+  <circle cx="145" cy="377" r="2" fill="#333"/>
+  <path d="M132 385c0-3 6-3 6 0" fill="none" stroke="#333" stroke-width="2"/>
+  
+  <circle cx="375" cy="377" r="2" fill="#333"/>
+  <circle cx="385" cy="377" r="2" fill="#333"/>
+  <path d="M372 385c0-3 6-3 6 0" fill="none" stroke="#333" stroke-width="2"/>
+  
+  <!-- Chat dots -->
+  <circle cx="200" cy="210" r="4" fill="#25D366"/>
+  <circle cx="220" cy="210" r="4" fill="#25D366"/>
+  <circle cx="240" cy="210" r="4" fill="#25D366"/>
+</svg>
