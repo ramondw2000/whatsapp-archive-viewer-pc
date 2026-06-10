@@ -6,7 +6,7 @@ import pkg from "./package.json";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
   plugins: [react()],
   publicDir: 'public',
 
@@ -16,6 +16,11 @@ export default defineConfig(async () => ({
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  esbuild: {
+    // Strip debug-only console methods in production; keep console.error for real errors
+    pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info', 'console.warn'] : [],
+    drop: mode === 'production' ? ['debugger'] : [],
   },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {

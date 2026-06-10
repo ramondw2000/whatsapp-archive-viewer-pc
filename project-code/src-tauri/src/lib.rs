@@ -23,12 +23,17 @@ static SVG_RE_HEIGHT: OnceLock<regex::Regex> = OnceLock::new();
 
 fn get_db() -> std::sync::MutexGuard<'static, Connection> {
     static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
-    DB.get_or_init(|| {
+    let mutex = DB.get_or_init(|| {
         let conn = init_database().expect("Failed to initialize SQLite database");
         Mutex::new(conn)
-    })
-    .lock()
-    .expect("Database mutex poisoned")
+    });
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("[DB] Mutex was poisoned; recovering connection");
+            poisoned.into_inner()
+        }
+    }
 }
 
 // ============================================================================
@@ -110,7 +115,53 @@ use percent_encoding::percent_decode_str;
 
 #[tauri::command]
 fn check_file_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
+    let app_data = get_app_data_dir();
+    let p = std::path::Path::new(&path);
+    if !p.starts_with(&app_data) {
+        return false;
+    }
+    p.exists()
+}
+
+/// Strip path traversal — return only the final filename component.
+/// Returns Err if the result is empty or purely dot-composed.
+fn sanitize_filename(s: &str) -> Result<String, String> {
+    let name = std::path::Path::new(s)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid filename".to_string())?;
+    if name.bytes().all(|b| b == b'.') {
+        return Err("Invalid filename".to_string());
+    }
+    Ok(name.to_string())
+}
+
+/// Ensure chat_id is a plain identifier with no path separators or dot-dot.
+fn validate_chat_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err("Invalid chat_id".to_string());
+    }
+    Ok(())
+}
+
+/// Extension allowlist — only permit known-safe media types through open_path.
+fn is_safe_open_extension(ext: &str) -> bool {
+    matches!(ext,
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "tiff" | "tif" | "avif" |
+        "mp4" | "mkv" | "mov" | "avi" | "webm" | "m4v" | "3gp" |
+        "mp3" | "m4a" | "aac" | "ogg" | "opus" | "flac" | "wav" |
+        "pdf" | "vcf" | "ico"
+    )
+}
+
+/// Allow only http:// and https:// URLs to be handed to the OS opener.
+fn validate_url_scheme(url: &str) -> Result<(), String> {
+    let l = url.to_lowercase();
+    if l.starts_with("https://") || l.starts_with("http://") {
+        Ok(())
+    } else {
+        Err("URL scheme not permitted".to_string())
+    }
 }
 
 
@@ -742,15 +793,7 @@ fn init_database() -> SqliteResult<Connection> {
 
         );
 
-        if let Ok(count) = result {
-
-            if count > 0 {
-
-                eprintln!("[MIGRATION] Updated {} .{} files to image type", count, ext);
-
-            }
-
-        }
+        let _ = result;
 
     }
 
@@ -1267,14 +1310,21 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
         let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read ZIP: {}", e))?;
 
-
+        const MAX_ZIP_ENTRIES: usize = 10_000;
+        const MAX_MEDIA_BYTES: u64 = 500 * 1024 * 1024; // 500 MB per file
+        if archive.len() > MAX_ZIP_ENTRIES {
+            return Err("Archive contains too many entries".to_string());
+        }
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).map_err(|e| format!("ZIP extraction error: {}", e))?;
-            let name = file.name().to_string();
-            let out_path = import_dir.join(&name);
-
-
+            // Use enclosed_name() to prevent zip-slip — returns None for unsafe paths (e.g. containing ..)
+            let safe_path = match file.enclosed_name() {
+                Some(p) => p.to_path_buf(),
+                None => continue, // skip unsafe entries
+            };
+            let name = safe_path.to_string_lossy().to_string();
+            let out_path = import_dir.join(&safe_path);
 
             if name.ends_with('/') || name.ends_with('\\') {
                 // Directory entry — skip, ensure_dir_exists handles creation on demand
@@ -1302,7 +1352,7 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
                     ensure_dir_exists(parent);
                 }
                 if let Ok(mut out_file) = File::create(&out_path) {
-                    let _ = std::io::copy(&mut file, &mut out_file);
+                    let _ = std::io::copy(&mut (&mut file).take(MAX_MEDIA_BYTES), &mut out_file);
                 }
             }
 
@@ -1322,8 +1372,6 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
     // Move media to chat media folder (flatten subdirectory structure)
 
-    eprintln!("[IMPORT] Found {} media files in archive", media_files.len());
-
     for media in &media_files {
 
         let src = import_dir.join(media);
@@ -1338,8 +1386,6 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
         let dst = chat_dir.join("media").join(filename);
 
-        eprintln!("[IMPORT] Copying: {:?} -> {:?}", src, dst);
-
         if let Some(parent) = dst.parent() {
 
             ensure_dir_exists(parent);
@@ -1348,9 +1394,9 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
         match fs::copy(&src, &dst) {
 
-            Ok(bytes) => { eprintln!("[IMPORT] Copied {} bytes", bytes); IMPORT_MEDIA_COUNT.fetch_add(1, Ordering::Relaxed); IMPORT_PHASE.store(1, Ordering::Relaxed); },
+            Ok(_) => { IMPORT_MEDIA_COUNT.fetch_add(1, Ordering::Relaxed); IMPORT_PHASE.store(1, Ordering::Relaxed); },
 
-            Err(e) => eprintln!("[IMPORT] Copy failed: {}", e),
+            Err(_) => {},
 
         }
 
@@ -1447,11 +1493,7 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
     // Check if a chat with the same name already exists → merge instead of duplicate
 
-    eprintln!("[IMPORT DEBUG] Checking for existing chat: zip_name='{}', is_group={}", zip_name, is_group);
-
     let existing_check = find_existing_chat_by_name(&conn, &zip_name, is_group);
-
-    eprintln!("[IMPORT DEBUG] Existing chat found: {:?}", existing_check);
 
     if let Some(existing_id) = existing_check {
 
@@ -1779,7 +1821,6 @@ fn find_existing_chat_by_name(conn: &Connection, zip_name: &str, is_group: bool)
 
     let normalized = normalize_chat_name(&candidate);
 
-    eprintln!("[IMPORT DEBUG] find_existing: candidate='{}', normalized='{}'", candidate, normalized);
 
 
 
@@ -1804,8 +1845,6 @@ fn find_existing_chat_by_name(conn: &Connection, zip_name: &str, is_group: bool)
     for row in rows.flatten() {
 
         let row_normalized = normalize_chat_name(&row.1);
-
-        eprintln!("[IMPORT DEBUG] Checking chat: id={}, original_name='{}', normalized='{}', match={}", row.0, row.1, row_normalized, row_normalized == normalized);
 
         if row_normalized == normalized {
 
@@ -2119,7 +2158,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
             in_code_block = !in_code_block;
             after_fence_close = was_open; // true if we just closed a block
             blank_since_close = false;  // reset blank tracking on every fence transition
-            eprintln!("[PARSE] fence toggle in_code_block={} line={:?}", in_code_block, line.chars().take(60).collect::<String>());
             if let Some(ref mut msg) = current_msg {
                 msg.content.push('\n');
                 msg.content.push_str(line);
@@ -2141,7 +2179,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                 line.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
             ) && line.contains(" - ");
             if !looks_like_date {
-                eprintln!("[PARSE] in_block continuation: {:?}", line.chars().take(60).collect::<String>());
                 if let Some(ref mut msg) = current_msg {
                     msg.content.push('\n');
                     msg.content.push_str(line);
@@ -2149,7 +2186,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                 continue;
             }
             // Implicitly close the unclosed fence
-            eprintln!("[PARSE] implicitly closing unclosed code block at: {:?}", line.chars().take(60).collect::<String>());
             in_code_block = false;
             after_fence_close = false;
             blank_since_close = false;
@@ -2176,12 +2212,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                 let time_str = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
                 if !sender_looks_valid || !is_plausible_whatsapp_date(date_str, time_str) || (after_fence_close && blank_since_close) {
-                    eprintln!("[PARSE] REJECTED match: sender_valid={} date_valid={} fence_blank_gap={} sender={:?} line={:?}",
-                        sender_looks_valid,
-                        is_plausible_whatsapp_date(date_str, time_str),
-                        after_fence_close && blank_since_close,
-                        sender_candidate.chars().take(40).collect::<String>(),
-                        line.chars().take(80).collect::<String>());
                     // Treat as continuation of previous message
                     if let Some(ref mut msg) = current_msg {
                         msg.content.push('\n');
@@ -2205,8 +2235,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                 
 
                 let sender = sender_candidate.to_string();
-
-                eprintln!("[PARSE] NEW MSG accepted: date={:?} time={:?} sender={:?} line={:?}", date_str, time_str, sender, line.chars().take(80).collect::<String>());
 
                 let content_text = caps.get(4).map(|m| m.as_str()).unwrap_or("").to_string();
 
@@ -2260,8 +2288,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
                     )).collect();
 
-                    eprintln!("[PARSE] Extracted media_file: '{}' ext: '{:?}' from content: '{}'", media_file, Path::new(&media_file).extension(), content_text.chars().take(100).collect::<String>());
-
                     let media_ext = Path::new(&media_file).extension()
 
                         .and_then(|e| e.to_str())
@@ -2294,8 +2320,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
                                 let size = fs::metadata(&media_full_path).map(|m| m.len()).unwrap_or(u64::MAX);
 
-                                eprintln!("[PARSE] video {} size: {} bytes", media_file, size);
-
                                 if size <= 800_000 { "gif" } else { "video" }
 
                             },
@@ -2308,7 +2332,6 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
                     };
 
-                    eprintln!("[PARSE] -> msg_type='{}' for file '{}'", msg_type, media_file);
                     (msg_type.to_string(), Some(media_file), content_text.clone())
 
                 } else if let Some(url) = extract_maps_url(&content_text) {
@@ -2756,6 +2779,7 @@ fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<Stri
         }
     }
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     // Strip Unicode directional/zero-width marks WhatsApp embeds in filenames
@@ -2767,6 +2791,7 @@ fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<Stri
         '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
 
     )).collect();
+    let filename_clean = sanitize_filename(&filename_clean)?;
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
 
@@ -2907,6 +2932,7 @@ fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<Stri
         }
     }
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     // Strip Unicode directional/zero-width marks WhatsApp embeds in filenames
@@ -2914,6 +2940,7 @@ fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<Stri
         '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
         '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
     )).collect();
+    let filename_clean = sanitize_filename(&filename_clean)?;
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
 
@@ -3010,24 +3037,23 @@ fn get_video_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 }
 
 fn get_image_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
-    use image::GenericImageView;
-    
-    // Try to load as image
-    match image::load_from_memory(bytes) {
-        Ok(img) => {
-            let (width, height) = img.dimensions();
-            Ok((width, height))
-        },
-        Err(_) => {
-            // If it fails (e.g., SVG), try to parse SVG dimensions
-            if let Ok(svg_str) = std::str::from_utf8(bytes) {
-                if let Some((w, h)) = parse_svg_dimensions(svg_str) {
-                    return Ok((w, h));
-                }
+    // Use into_dimensions() — reads only the image header, no full decode, avoids OOM bomb
+    let cursor = std::io::BufReader::new(std::io::Cursor::new(bytes));
+    match image::ImageReader::new(cursor).with_guessed_format() {
+        Ok(reader) => {
+            if let Ok((w, h)) = reader.into_dimensions() {
+                return Ok((w, h));
             }
-            Ok((0, 0))
+        }
+        Err(_) => {}
+    }
+    // SVG fallback
+    if let Ok(svg_str) = std::str::from_utf8(bytes) {
+        if let Some((w, h)) = parse_svg_dimensions(svg_str) {
+            return Ok((w, h));
         }
     }
+    Ok((0, 0))
 }
 
 fn parse_svg_dimensions(svg: &str) -> Option<(u32, u32)> {
@@ -3047,8 +3073,15 @@ fn parse_svg_dimensions(svg: &str) -> Option<(u32, u32)> {
 }
 
 fn convert_tiff_to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    use image::ImageFormat;
-    let img = image::load_from_memory_with_format(bytes, ImageFormat::Tiff)
+    use image::{ImageFormat, Limits};
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(16_000);
+    limits.max_image_height = Some(16_000);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    let cursor = std::io::BufReader::new(std::io::Cursor::new(bytes));
+    let mut reader = image::ImageReader::with_format(cursor, ImageFormat::Tiff);
+    reader.limits(limits); // limits() is &mut self → (), cannot be chained
+    let img = reader.decode()
         .map_err(|e| format!("Failed to decode TIFF: {}", e))?;
     let mut png_buf = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut png_buf), ImageFormat::Png)
@@ -3134,7 +3167,11 @@ fn extract_maps_url(text: &str) -> Option<String> {
         // Only extract if it's actually a maps URL (not youtube, etc.)
         if patterns.iter().any(|p| part.contains(p)) && !part.contains("youtube.com") && !part.contains("youtu.be") {
 
-            return Some(part.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != '?' && c != '=' && c != '.' && c != ':' && c != ',' && c != '-' && c != '_' && c != '%' && c != '&' && c != '+' && c != '#').to_string());
+            let trimmed = part.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != '?' && c != '=' && c != '.' && c != ':' && c != ',' && c != '-' && c != '_' && c != '%' && c != '&' && c != '+' && c != '#').to_string();
+            // Only return http/https URLs to prevent file:// or custom-scheme launches
+            if validate_url_scheme(&trimmed).is_ok() {
+                return Some(trimmed);
+            }
 
         }
 
@@ -3206,6 +3243,9 @@ fn set_file_tag(chat_id: String, message_idx: i64, tag_ext: String) -> Result<()
 
 fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, new_filename: String) -> Result<(), String> {
 
+    validate_chat_id(&chat_id)?;
+    let old_filename = sanitize_filename(&old_filename)?;
+    let new_filename = sanitize_filename(&new_filename)?;
     let app_data = get_app_data_dir();
 
     let media_dir = app_data.join("chats").join(&chat_id).join("media");
@@ -3308,6 +3348,7 @@ struct VCardContact {
 
 fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String> {
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     let filename: String = filename.chars().filter(|c| !matches!(*c,
@@ -3317,6 +3358,7 @@ fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String
         '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
 
     )).collect();
+    let filename = sanitize_filename(&filename)?;
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename);
 
@@ -3404,6 +3446,7 @@ fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String
 
 fn open_vcard_whatsapp(chat_id: String, filename: String, method: String) -> Result<(), String> {
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     let filename: String = filename.chars().filter(|c| !matches!(*c,
@@ -3413,6 +3456,7 @@ fn open_vcard_whatsapp(chat_id: String, filename: String, method: String) -> Res
         '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
 
     )).collect();
+    let filename = sanitize_filename(&filename)?;
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename);
 
@@ -3511,6 +3555,7 @@ fn open_vcard_whatsapp(chat_id: String, filename: String, method: String) -> Res
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
+    validate_url_scheme(&url)?;
     tauri_plugin_opener::open_url(&url, None::<&str>)
         .map_err(|e| format!("Failed to open URL: {}", e))
 }
@@ -3519,6 +3564,7 @@ fn open_url(url: String) -> Result<(), String> {
 
 fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     let filename: String = filename.chars().filter(|c| !matches!(*c,
@@ -3528,6 +3574,7 @@ fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
         '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
 
     )).collect();
+    let filename = sanitize_filename(&filename)?;
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename);
 
@@ -3537,7 +3584,11 @@ fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
 
     }
 
-
+    // Only allow known-safe extensions through the OS handler to prevent click-to-execute RCE
+    let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if !is_safe_open_extension(&ext) {
+        return Err(format!("File type not permitted to open: {:?}", ext));
+    }
 
     tauri_plugin_opener::open_path(media_path.to_string_lossy().as_ref(), None::<&str>)
 
@@ -3551,6 +3602,8 @@ fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
 
 fn get_media_path(chat_id: String, filename: String) -> Result<String, String> {
 
+    validate_chat_id(&chat_id)?;
+    let filename = sanitize_filename(&filename)?;
     let app_data = get_app_data_dir();
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename);
@@ -3783,6 +3836,8 @@ fn extract_file_from_zip(chat_id: String, filename: String) -> Result<String, St
 
     let zip_path = zip_path.ok_or("No archive path stored for this chat")?;
 
+    validate_chat_id(&chat_id)?;
+    let filename = sanitize_filename(&filename)?;
     let app_data = get_app_data_dir();
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename);
@@ -4135,6 +4190,7 @@ fn migrate_from_json() -> SqliteResult<()> {
 
 fn delete_chat(chat_id: String) -> Result<(), String> {
 
+    validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
 
     let chat_dir = app_data.join("chats").join(&chat_id);
@@ -4978,15 +5034,11 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
 
 fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Result<(), String> {
 
-    eprintln!("[RUST] apply_chat_modifications called for chat_id={}", chat_id);
-
     let conn = get_db();
     
     let modifications: Vec<serde_json::Value> = 
 
         serde_json::from_str(&modifications_json).map_err(|e| e.to_string())?;
-
-    eprintln!("[RUST] Parsed {} modifications", modifications.len());
     
     for mod_entry in modifications {
 
@@ -5197,6 +5249,10 @@ fn save_background_from_b64(b64: String, ext: String) -> Result<String, String> 
 
 #[tauri::command]
 async fn read_file_as_base64(path: String) -> Result<String, String> {
+    let app_data = get_app_data_dir();
+    if !std::path::Path::new(&path).starts_with(&app_data) {
+        return Err("Path is outside permitted directory".to_string());
+    }
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
     let b64 = base64_encode(&bytes);
     let ext = Path::new(&path)
@@ -5715,6 +5771,7 @@ async fn import_from_export(zip_path: String) -> Result<Vec<String>, String> {
 /// which does not support Android.
 #[tauri::command]
 async fn import_zip_from_bytes(b64: String, filename: String) -> Result<Vec<String>, String> {
+    let filename = sanitize_filename(&filename)?;
     let bytes = base64_decode(&b64).map_err(|e| format!("Failed to decode base64: {}", e))?;
     let cache_path = get_app_data_dir().join("import_cache").join(&filename);
     if let Some(parent) = cache_path.parent() {
@@ -5882,7 +5939,7 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                 let entry_name = entry.name().to_string();
                 if entry_name.starts_with(&media_prefix) && entry_name.len() > media_prefix.len() {
                     let filename = &entry_name[media_prefix.len()..];
-                    if !filename.contains('/') && !filename.is_empty() {
+                    if !filename.contains('/') && !filename.contains('\\') && !filename.is_empty() {
                         let dst = existing_chat_dir.join("media").join(filename);
                         if !dst.exists() {
                             if let Ok(mut out) = File::create(&dst) {
@@ -5893,7 +5950,7 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                     }
                 } else if entry_name.starts_with(&custom_prefix) && entry_name.len() > custom_prefix.len() {
                     let filename = &entry_name[custom_prefix.len()..];
-                    if !filename.contains('/') && !filename.is_empty() {
+                    if !filename.contains('/') && !filename.contains('\\') && !filename.is_empty() {
                         let dst = existing_chat_dir.join("custom").join(filename);
                         if !dst.exists() {
                             if let Ok(mut out) = File::create(&dst) {
@@ -5947,7 +6004,7 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
 
             if entry_name.starts_with(&media_prefix) && entry_name.len() > media_prefix.len() {
                 let filename = &entry_name[media_prefix.len()..];
-                if !filename.contains('/') && !filename.is_empty() {
+                if !filename.contains('/') && !filename.contains('\\') && !filename.is_empty() {
                     let dst = chat_dir.join("media").join(filename);
                     let mut out = File::create(&dst).map_err(|e| e.to_string())?;
                     IMPORT_MEDIA_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -5955,7 +6012,7 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                 }
             } else if entry_name.starts_with(&custom_prefix) && entry_name.len() > custom_prefix.len() {
                 let filename = &entry_name[custom_prefix.len()..];
-                if !filename.contains('/') && !filename.is_empty() {
+                if !filename.contains('/') && !filename.contains('\\') && !filename.is_empty() {
                     let dst = chat_dir.join("custom").join(filename);
                     let mut out = File::create(&dst).map_err(|e| e.to_string())?;
                     IMPORT_MEDIA_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -6132,8 +6189,6 @@ pub fn run() {
 
             let uri = request.uri().to_string();
 
-            eprintln!("[MEDIA] Raw URI: {}", uri);
-
             // URI format varies by platform/Tauri version:
 
             // - media://localhost/chat_id/filename  (standard)
@@ -6188,23 +6243,13 @@ pub fn run() {
 
             
 
-            eprintln!("[MEDIA] Looking for: chat_id={}, filename={}", chat_id, filename);
-
-            eprintln!("[MEDIA] Direct path: {:?}", direct_path);
-
-            
-
             // Try direct path first, then search recursively in subdirectories
 
             let file_data = if let Ok(data) = std::fs::read(&direct_path) {
 
-                eprintln!("[MEDIA] Found at direct path");
-
                 Some(data)
 
             } else {
-
-                eprintln!("[MEDIA] Not found at direct path, searching recursively...");
 
                 // Fallback: search recursively in media folder (for existing imports with subdirs)
 
@@ -6241,30 +6286,6 @@ pub fn run() {
                 }
 
                 let found = find_file_recursive(&media_dir, filename);
-
-                if let Some(ref p) = found {
-
-                    eprintln!("[MEDIA] Found recursively at: {:?}", p);
-
-                } else {
-
-                    eprintln!("[MEDIA] Not found anywhere in: {:?}", media_dir);
-
-                    // List what's in the media dir for debugging
-
-                    if let Ok(entries) = std::fs::read_dir(&media_dir) {
-
-                        eprintln!("[MEDIA] Contents of media dir:");
-
-                        for entry in entries.flatten() {
-
-                            eprintln!("  - {:?}", entry.file_name());
-
-                        }
-
-                    }
-
-                }
 
                 found.and_then(|p| std::fs::read(p).ok())
 

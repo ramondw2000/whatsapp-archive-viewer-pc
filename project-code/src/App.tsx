@@ -2227,6 +2227,11 @@ function App() {
 
   function confirmOpenLink() {
     if (linkConfirmUrl) {
+      const lower = linkConfirmUrl.toLowerCase();
+      if (!lower.startsWith('https://') && !lower.startsWith('http://')) {
+        setLinkConfirmUrl(null);
+        return;
+      }
       openUrl(linkConfirmUrl).catch(console.error);
     }
     setLinkConfirmUrl(null);
@@ -3306,18 +3311,6 @@ function App() {
 
 
       console.log("[LOAD_MESSAGES] Received", initialData.messages.length, "messages");
-
-
-      // Debug: log messages with DOC-20260504 to see if tag_ext persists
-
-
-      const debugMsgs = initialData.messages.filter(m => m.media?.includes("DOC-20260504"));
-
-
-      if (debugMsgs.length > 0) {
-
-
-      }
 
 
       if (token.cancelled) return;
@@ -5207,7 +5200,7 @@ function MessageRenderer({
             title="Open in maps"
 
 
-            onClick={() => openUrl(msg.media!).catch(console.error)}
+            onClick={() => openLinkWithConfirm(msg.media!)}
 
 
           >
