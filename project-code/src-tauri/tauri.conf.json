@@ -21,9 +21,13 @@
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["**/*"]
+        "scope": [
+          "$APPDATA/WhatsAppArchiveViewer/chats/**",
+          "$APPDATA/WhatsAppArchiveViewer/custom/**",
+          "$RESOURCE/app_backgrounds/**"
+        ]
       },
-      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost http://asset.localhost media: http://media.localhost https://media.localhost file: blob: https://unpkg.com; media-src 'self' asset: https://asset.localhost http://asset.localhost media: http://media.localhost https://media.localhost file: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: https://ipc.localhost https://unpkg.com"
+      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost http://asset.localhost blob:; media-src 'self' asset: https://asset.localhost http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: https://ipc.localhost"
     }
   },
   "bundle": {
