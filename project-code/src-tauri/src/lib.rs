@@ -10,6 +10,27 @@ static IMPORT_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::
 // phases: 0=idle, 1=extracting, 2=parsing, 3=saving to db, 4=done
 static BACKFILL_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+static TS_RE_SLASH_FULL: OnceLock<regex::Regex> = OnceLock::new();
+static TS_RE_SLASH_SHORT: OnceLock<regex::Regex> = OnceLock::new();
+static TS_RE_DASH_FULL: OnceLock<regex::Regex> = OnceLock::new();
+static TS_RE_DOT_FULL: OnceLock<regex::Regex> = OnceLock::new();
+static SVG_RE_WIDTH: OnceLock<regex::Regex> = OnceLock::new();
+static SVG_RE_HEIGHT: OnceLock<regex::Regex> = OnceLock::new();
+
+// ============================================================================
+// GLOBAL DATABASE CONNECTION
+// ============================================================================
+
+fn get_db() -> std::sync::MutexGuard<'static, Connection> {
+    static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
+    DB.get_or_init(|| {
+        let conn = init_database().expect("Failed to initialize SQLite database");
+        Mutex::new(conn)
+    })
+    .lock()
+    .expect("Database mutex poisoned")
+}
+
 // ============================================================================
 // MEDIA PRELOAD CACHE
 // ============================================================================
@@ -377,7 +398,6 @@ fn init_database() -> SqliteResult<Connection> {
     // Ensure parent directory exists before opening
     if let Some(parent) = db_path.parent() {
         let _ = fs::create_dir_all(parent);
-        eprintln!("[DB] Opening database at: {:?}", db_path);
     }
 
     let conn = Connection::open(&db_path)?;
@@ -1342,7 +1362,7 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
     // Save to SQLite database
 
-    let mut conn = init_database().map_err(|e| format!("Failed to init database: {}", e))?;
+    let mut conn = get_db();
 
     // backfill_epochs not needed here — new imports always set last_message_epoch correctly
 
@@ -1658,13 +1678,10 @@ fn timestamp_to_epoch(ts: &str) -> i64 {
 
     // Returns seconds since Unix epoch (UTC), or 0 on failure.
 
-    let slash_full  = regex::Regex::new(r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})").unwrap();
-
-    let slash_short = regex::Regex::new(r"(\d{1,2})/(\d{1,2})/(\d{2})\s+(\d{1,2}):(\d{2})").unwrap();
-
-    let dash_full   = regex::Regex::new(r"(\d{2})-(\d{2})-(\d{4})\s+(\d{1,2}):(\d{2})").unwrap();
-
-    let dot_full    = regex::Regex::new(r"(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})").unwrap();
+    let slash_full  = TS_RE_SLASH_FULL.get_or_init(|| regex::Regex::new(r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})").unwrap());
+    let slash_short = TS_RE_SLASH_SHORT.get_or_init(|| regex::Regex::new(r"(\d{1,2})/(\d{1,2})/(\d{2})\s+(\d{1,2}):(\d{2})").unwrap());
+    let dash_full   = TS_RE_DASH_FULL.get_or_init(|| regex::Regex::new(r"(\d{2})-(\d{2})-(\d{4})\s+(\d{1,2}):(\d{2})").unwrap());
+    let dot_full    = TS_RE_DOT_FULL.get_or_init(|| regex::Regex::new(r"(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})").unwrap());
 
 
 
@@ -1949,7 +1966,7 @@ fn detect_group_chat(messages: &[Message]) -> bool {
 
         .collect();
 
-    senders.len() > 2
+    senders.len() > 1
 
 }
 
@@ -2511,7 +2528,7 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
 fn get_chat_list() -> Result<Vec<ChatMeta>, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     backfill_epochs(&conn);
 
@@ -2571,7 +2588,7 @@ fn get_chat_list() -> Result<Vec<ChatMeta>, String> {
 
 fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<ChatData, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -2661,7 +2678,7 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
 fn get_chat_message_count(chat_id: String) -> Result<i64, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let count: i64 = conn.query_row(
 
@@ -2694,6 +2711,37 @@ fn get_media_base_dir(chat_id: String) -> String {
 }
 
 
+
+fn mime_for_ext(ext: &str) -> &'static str {
+    match ext {
+        "jpg" | "jpeg"  => "image/jpeg",
+        "png"           => "image/png",
+        "gif"           => "image/gif",
+        "webp"          => "image/webp",
+        "bmp"           => "image/bmp",
+        "heic" | "heif" => "image/heic",
+        "svg"           => "image/svg+xml",
+        "tif" | "tiff"  => "image/png",
+        "avif"          => "image/avif",
+        "mp4"           => "video/mp4",
+        "mov"           => "video/quicktime",
+        "avi"           => "video/x-msvideo",
+        "mkv"           => "video/x-matroska",
+        "webm"          => "video/webm",
+        "3gp" | "3gpp"  => "audio/3gpp",
+        "m4v"           => "video/x-m4v",
+        "ts"            => "video/mp2t",
+        "opus"          => "audio/ogg; codecs=opus",
+        "ogg"           => "audio/ogg",
+        "mp3"           => "audio/mpeg",
+        "m4a"           => "audio/mp4",
+        "aac"           => "audio/aac",
+        "wav"           => "audio/wav",
+        "amr"           => "audio/amr",
+        "flac"          => "audio/flac",
+        _               => "application/octet-stream",
+    }
+}
 
 #[tauri::command]
 
@@ -2759,68 +2807,10 @@ fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<Stri
 
 
     let ext = media_path.extension()
-
         .and_then(|e| e.to_str())
-
         .unwrap_or("")
-
         .to_lowercase();
-
-    let mime = match ext.as_str() {
-
-        "jpg" | "jpeg" => "image/jpeg",
-
-        "png"          => "image/png",
-
-        "gif"          => "image/gif",
-
-        "webp"         => "image/webp",
-
-        "bmp"          => "image/bmp",
-
-        "heic" | "heif" => "image/heic",
-
-        "svg"           => "image/svg+xml",
-
-        "tif" | "tiff"  => "image/png",
-
-        "avif"          => "image/avif",
-
-        "mp4"          => "video/mp4",
-
-        "mov"          => "video/quicktime",
-
-        "avi"          => "video/x-msvideo",
-
-        "mkv"          => "video/x-matroska",
-
-        "webm"         => "video/webm",
-
-        "3gp" | "3gpp" => "audio/3gpp",
-
-        "m4v"          => "video/x-m4v",
-
-        "ts"           => "video/mp2t",
-
-        "opus"         => "audio/ogg; codecs=opus",
-
-        "ogg"          => "audio/ogg",
-
-        "mp3"          => "audio/mpeg",
-
-        "m4a"          => "audio/mp4",
-
-        "aac"          => "audio/aac",
-
-        "wav"          => "audio/wav",
-
-        "amr"          => "audio/amr",
-
-        "flac"         => "audio/flac",
-
-        _              => "application/octet-stream",
-
-    };
+    let mime = mime_for_ext(ext.as_str());
 
 
 
@@ -2840,7 +2830,7 @@ fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<Stri
 /// from the original source ZIP (stored in the DB) and save it permanently.
 /// Returns the bytes if found, Err if not available from any source.
 fn try_extract_from_zip(chat_id: &str, filename_clean: &str, media_path: &std::path::Path) -> Result<Vec<u8>, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     let zip_path: Option<String> = conn.query_row(
         "SELECT zip_path FROM chats WHERE id = ?1",
         [chat_id],
@@ -2901,39 +2891,19 @@ struct MediaWithDims {
 
 #[tauri::command]
 fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<String>) -> Result<MediaWithDims, String> {
-    // Debug logging
-    let log_path = get_app_data_dir().join("debug.log");
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .and_then(|mut f| {
-            use std::io::Write;
-            writeln!(f, "[get_media_with_dims] chat_id={}, filename={}", chat_id, filename)
-        });
-    
     // Check preload cache first
     let cache_key = format!("{}:{}", chat_id, filename);
     {
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
         if let Some(cached) = cache.get(&cache_key) {
-            // Try to extract dimensions from cached image
             if let Some(data_start) = cached.find("base64,") {
                 let b64_data = &cached[data_start + 7..];
                 if let Ok(bytes) = base64_decode(b64_data) {
                     let (width, height) = get_image_dimensions(&bytes).unwrap_or((0, 0));
-                    return Ok(MediaWithDims {
-                        data: cached.clone(),
-                        width,
-                        height,
-                    });
+                    return Ok(MediaWithDims { data: cached.clone(), width, height });
                 }
             }
-            return Ok(MediaWithDims {
-                data: cached.clone(),
-                width: 0,
-                height: 0,
-            });
+            return Ok(MediaWithDims { data: cached.clone(), width: 0, height: 0 });
         }
     }
 
@@ -2946,168 +2916,51 @@ fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<Stri
     )).collect();
 
     let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
-    
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .and_then(|mut f| {
-            use std::io::Write;
-            writeln!(f, "  media_path={:?}, exists={}", media_path, media_path.exists())
-        });
 
     let bytes = if media_path.exists() {
-        fs::read(&media_path).map_err(|e| {
-            let err = format!("Failed to read file: {}", e);
-            let _ = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path)
-                .and_then(|mut f| {
-                    use std::io::Write;
-                    writeln!(f, "  ERROR: {}", err)
-                });
-            err
-        })?
+        fs::read(&media_path).map_err(|e| e.to_string())?
     } else {
-        try_extract_from_zip(&chat_id, &filename_clean, &media_path).map_err(|e| {
-            let _ = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path)
-                .and_then(|mut f| {
-                    use std::io::Write;
-                    writeln!(f, "  ERROR extracting from zip: {}", e)
-                });
-            e
-        })?
+        try_extract_from_zip(&chat_id, &filename_clean, &media_path)?
     };
 
     // Get dimensions - try video first for video formats, then fall back to image
     let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm" | "m4v" | "ts");
-    
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .and_then(|mut f| {
-            use std::io::Write;
-            writeln!(f, "  ext={}, is_video={}, bytes_len={}", ext, is_video, bytes.len())
-        });
-    
+
     let (width, height) = if is_video {
         get_video_dimensions(&bytes).unwrap_or((0, 0))
     } else {
-        match get_image_dimensions(&bytes) {
-            Ok(dims) => dims,
-            Err(e) => {
-                let _ = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&log_path)
-                    .and_then(|mut f| {
-                        use std::io::Write;
-                        writeln!(f, "  ERROR get_image_dimensions: {}", e)
-                    });
-                (0, 0)
-            }
-        }
+        get_image_dimensions(&bytes).unwrap_or((0, 0))
     };
-    
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .and_then(|mut f| {
-            use std::io::Write;
-            writeln!(f, "  dimensions: {}x{}", width, height)
-        });
 
     // Convert TIFF to PNG for browser compatibility (browsers can't render image/tiff)
-    let bytes = {
-        let ext_check = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        if ext_check == "tiff" || ext_check == "tif" {
-            convert_tiff_to_png(&bytes).unwrap_or(bytes)
-        } else {
-            bytes
-        }
+    let bytes = if ext == "tiff" || ext == "tif" {
+        convert_tiff_to_png(&bytes).unwrap_or(bytes)
+    } else {
+        bytes
     };
-    
+
     let b64 = base64_encode(&bytes);
 
     // If caller supplies a mime_hint (e.g. for extensionless files), use it directly
     if let Some(hint) = mime_hint {
         if !hint.is_empty() {
             let result = format!("data:{};base64,{}", hint, b64);
-            // Store in preload cache
-            {
-                let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-                cache.set(cache_key, result.clone());
-            }
-            return Ok(MediaWithDims {
-                data: result,
-                width,
-                height,
-            });
+            let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
+            cache.set(cache_key, result.clone());
+            return Ok(MediaWithDims { data: result, width, height });
         }
     }
 
-    let ext = media_path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let mime = match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png"          => "image/png",
-        "gif"          => "image/gif",
-        "webp"         => "image/webp",
-        "bmp"          => "image/bmp",
-        "tiff" | "tif" => "image/png",
-        "heic" | "heif" => "image/heic",
-        "svg"           => "image/svg+xml",
-        "mp4"          => "video/mp4",
-        "mov"          => "video/quicktime",
-        "avi"          => "video/x-msvideo",
-        "mkv"          => "video/x-matroska",
-        "webm"         => "video/webm",
-        "3gp" | "3gpp" => "audio/3gpp",
-        "m4v"          => "video/x-m4v",
-        "ts"           => "video/mp2t",
-        "opus"         => "audio/ogg; codecs=opus",
-        "ogg"          => "audio/ogg",
-        "mp3"          => "audio/mpeg",
-        "m4a"          => "audio/mp4",
-        "aac"          => "audio/aac",
-        "wav"          => "audio/wav",
-        "amr"          => "audio/amr",
-        "flac"         => "audio/flac",
-        _              => "application/octet-stream",
-    };
-
+    let mime = mime_for_ext(ext.as_str());
     let result = format!("data:{};base64,{}", mime, b64);
 
-    // Store in preload cache
     {
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
         cache.set(cache_key, result.clone());
     }
 
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .and_then(|mut f| {
-            use std::io::Write;
-            writeln!(f, "  SUCCESS: mime={}, data_len={}", mime, result.len())
-        });
-
-    Ok(MediaWithDims {
-        data: result,
-        width,
-        height,
-    })
+    Ok(MediaWithDims { data: result, width, height })
 }
 
 fn get_video_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
@@ -3179,8 +3032,8 @@ fn get_image_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
 
 fn parse_svg_dimensions(svg: &str) -> Option<(u32, u32)> {
     // Simple SVG dimension parser - looks for width and height attributes
-    let width_re = regex::Regex::new(r#"width\s*=\s*["']?(\d+)"#).ok()?;
-    let height_re = regex::Regex::new(r#"height\s*=\s*["']?(\d+)"#).ok()?;
+    let width_re = SVG_RE_WIDTH.get_or_init(|| regex::Regex::new(r#"width\s*=\s*["']?(\d+)"#).unwrap());
+    let height_re = SVG_RE_HEIGHT.get_or_init(|| regex::Regex::new(r#"height\s*=\s*["']?(\d+)"#).unwrap());
     
     let width = width_re.captures(svg)
         .and_then(|c| c.get(1))
@@ -3297,7 +3150,7 @@ fn extract_maps_url(text: &str) -> Option<String> {
 
 fn set_display_name(chat_id: String, message_idx: i64, display_name: String) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let name = if display_name.trim().is_empty() { None::<String> } else { Some(display_name.trim().to_string()) };
 
@@ -3323,7 +3176,7 @@ fn set_display_name(chat_id: String, message_idx: i64, display_name: String) -> 
 
 fn set_file_tag(chat_id: String, message_idx: i64, tag_ext: String) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let tag = if tag_ext.trim().is_empty() { None::<String> } else {
 
@@ -3391,7 +3244,7 @@ fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, ne
 
     // Update the database media column
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     conn.execute(
 
@@ -3417,7 +3270,7 @@ fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, ne
 
 fn set_message_type(chat_id: String, message_idx: i64, msg_type: String) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     conn.execute(
 
@@ -3510,7 +3363,7 @@ fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String
 
 
 
-        if line_lower.starts_with("fn") {
+        if line_lower.starts_with("fn:") || line_lower.starts_with("fn;") {
             let extracted = line.split(':').nth(1).map(|s| s.trim().to_string());
             name = extracted;
         } else if line_lower.starts_with("tel") {
@@ -3722,7 +3575,7 @@ fn get_media_path(chat_id: String, filename: String) -> Result<String, String> {
 
 fn check_file_in_zip(chat_id: String, filename: String) -> Result<bool, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let zip_path: Option<String> = conn.query_row(
 
@@ -3914,7 +3767,7 @@ fn preload_media(chat_id: String, filenames: Vec<String>) -> Result<usize, Strin
 
 fn extract_file_from_zip(chat_id: String, filename: String) -> Result<String, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let zip_path: Option<String> = conn.query_row(
 
@@ -4104,7 +3957,7 @@ fn debug_chat_media(chat_id: String) -> Result<String, String> {
 
     result.push_str("\nMedia paths in database:\n");
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let mut stmt = conn.prepare(
 
@@ -4158,7 +4011,7 @@ fn migrate_from_json() -> SqliteResult<()> {
 
     
 
-    let mut conn = init_database()?;
+    let mut conn = get_db();
 
     
 
@@ -4292,7 +4145,7 @@ fn delete_chat(chat_id: String) -> Result<(), String> {
 
     // Delete from SQLite (cascade will delete messages)
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     conn.execute("DELETE FROM chats WHERE id = ?1", params![&chat_id])
 
@@ -4324,7 +4177,7 @@ fn delete_chat(chat_id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn clear_all_chats() -> Result<u32, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     let app_data = get_app_data_dir();
 
     // Get all chat IDs first
@@ -4365,7 +4218,7 @@ fn migrate_chats() -> Result<i32, String> {
 
     // Count migrated chats
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let count: i32 = conn.query_row("SELECT COUNT(*) FROM chats", [], |row| row.get(0))
 
@@ -4419,7 +4272,7 @@ pub struct SearchFilters {
 
 fn search_messages(chat_id: String, query: String) -> Result<Vec<SearchResult>, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -4509,7 +4362,7 @@ fn search_messages(chat_id: String, query: String) -> Result<Vec<SearchResult>, 
 
 fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<Vec<SearchResult>, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -4673,7 +4526,7 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
 fn search_chats(query: String) -> Result<Vec<ChatMeta>, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -4754,7 +4607,7 @@ pub struct Profile {
 
 fn get_profile(chat_id: String) -> Result<Profile, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -4814,7 +4667,7 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
 fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
 
 
@@ -4894,7 +4747,7 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
 
 fn remove_profile_photo(chat_id: String) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
 
 
@@ -4932,7 +4785,7 @@ pub struct NameHistoryEntry {
 
 fn get_name_history(chat_id: String) -> Result<Vec<NameHistoryEntry>, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let mut stmt = conn.prepare(
 
@@ -4966,7 +4819,7 @@ fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), Stri
 
     // name = Some(x) restores to x, name = None resets to original (clears profiles.name)
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     conn.execute(
 
@@ -5001,7 +4854,7 @@ fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), Stri
 #[tauri::command]
 fn export_chat_modifications(chat_id: String) -> Result<String, String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     
     // Build list of all modifications
 
@@ -5127,7 +4980,7 @@ fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Resu
 
     eprintln!("[RUST] apply_chat_modifications called for chat_id={}", chat_id);
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     
     let modifications: Vec<serde_json::Value> = 
 
@@ -5245,7 +5098,7 @@ fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Resu
 
 fn clear_modification_flags(chat_id: String) -> Result<(), String> {
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     
 
@@ -5408,7 +5261,7 @@ async fn set_chat_background(app: tauri::AppHandle, chat_id: String) -> Result<O
     fs::copy(&src_path, &dest_path).map_err(|e| format!("Failed to copy background: {}", e))?;
     let dest_str = dest_path.to_string_lossy().to_string();
 
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     conn.execute(
         "INSERT INTO profiles (chat_id, background_path, profile_modified)
@@ -5427,7 +5280,7 @@ async fn set_chat_background(app: tauri::AppHandle, chat_id: String) -> Result<O
 
 #[tauri::command]
 fn get_background_history(chat_id: String) -> Result<Vec<BackgroundHistoryEntry>, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     let mut stmt = conn.prepare(
         "SELECT id, background_path, changed_at FROM chat_background_history WHERE chat_id = ?1 ORDER BY changed_at DESC"
     ).map_err(|e| e.to_string())?;
@@ -5443,7 +5296,7 @@ fn get_background_history(chat_id: String) -> Result<Vec<BackgroundHistoryEntry>
 
 #[tauri::command]
 fn get_chat_background(chat_id: String) -> Result<Option<String>, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     let result: Option<String> = conn.query_row(
         "SELECT background_path FROM profiles WHERE chat_id = ?1",
         params![&chat_id],
@@ -5454,7 +5307,7 @@ fn get_chat_background(chat_id: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn restore_chat_background(chat_id: String, background_path: String) -> Result<(), String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     conn.execute(
         "INSERT INTO profiles (chat_id, background_path, profile_modified)
          VALUES (?1, ?2, 1)
@@ -5470,7 +5323,7 @@ fn restore_chat_background(chat_id: String, background_path: String) -> Result<(
 
 #[tauri::command]
 fn clear_chat_background(chat_id: String) -> Result<(), String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     conn.execute(
         "UPDATE profiles SET background_path = NULL, profile_modified = 1 WHERE chat_id = ?1",
         params![&chat_id],
@@ -5480,7 +5333,7 @@ fn clear_chat_background(chat_id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn toggle_message_favorite(chat_id: String, message_idx: i64, is_favorite: bool) -> Result<(), String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
     conn.execute(
         "UPDATE messages SET is_favorite = ?1 WHERE chat_id = ?2 AND id = (
             SELECT id FROM messages WHERE chat_id = ?3 ORDER BY id LIMIT 1 OFFSET ?4
@@ -5492,7 +5345,7 @@ fn toggle_message_favorite(chat_id: String, message_idx: i64, is_favorite: bool)
 
 #[tauri::command]
 fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
+    let conn = get_db();
 
     let mut stmt = conn.prepare(
         "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 AND is_favorite = 1 ORDER BY id DESC"
@@ -5672,8 +5525,10 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
 
 #[tauri::command]
 async fn export_chat_zip(app: tauri::AppHandle, chat_id: String) -> Result<String, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
-    let (folder_name, meta_bytes, messages_bytes, modifications_bytes) = build_chat_export_data(&conn, &chat_id)?;
+    let (folder_name, meta_bytes, messages_bytes, modifications_bytes) = {
+        let conn = get_db();
+        build_chat_export_data(&conn, &chat_id)?
+    };
 
     // Pick save location
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -5747,10 +5602,9 @@ async fn export_chat_zip(app: tauri::AppHandle, chat_id: String) -> Result<Strin
 
 #[tauri::command]
 async fn export_all_chats_zip(app: tauri::AppHandle) -> Result<String, String> {
-    let conn = init_database().map_err(|e| e.to_string())?;
-
     // Get all chat IDs
     let chat_ids: Vec<String> = {
+        let conn = get_db();
         let mut stmt = conn.prepare("SELECT id FROM chats ORDER BY last_message_epoch DESC")
             .map_err(|e| e.to_string())?;
         let result = stmt.query_map([], |row| row.get(0))
@@ -5787,7 +5641,10 @@ async fn export_all_chats_zip(app: tauri::AppHandle) -> Result<String, String> {
     let mut used_names: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
 
     for chat_id in &chat_ids {
-        let (mut folder_name, meta_bytes, messages_bytes, modifications_bytes) = build_chat_export_data(&conn, chat_id)?;
+        let (mut folder_name, meta_bytes, messages_bytes, modifications_bytes) = {
+            let conn = get_db();
+            build_chat_export_data(&conn, chat_id)?
+        };
 
         // Handle duplicate folder names
         let count = used_names.entry(folder_name.clone()).or_insert(0);
@@ -5965,7 +5822,7 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
 
     let mut imported_ids: Vec<String> = Vec::new();
     let app_data = get_app_data_dir();
-    let mut conn = init_database().map_err(|e| e.to_string())?;
+    let mut conn = get_db();
     backfill_epochs(&conn);
 
     for folder in &chat_folders {
@@ -6246,7 +6103,7 @@ pub fn run() {
         let current_pid = std::process::id();
         // Use tasklist to find other instances of the same exe
         if let Ok(output) = Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq whatsapp-archive-viewer.exe", "/FO", "CSV", "/NH"])
+            .args(["/FI", "IMAGENAME eq whatsapp-archive-viewer-pc.exe", "/FO", "CSV", "/NH"])
             .output()
         {
             if let Ok(s) = String::from_utf8(output.stdout) {
@@ -6638,7 +6495,7 @@ pub fn run() {
 
 //     3. Update the test(s) to reflect the new behavior AFTER getting approval.
 
-//   Run tests with: cargo test --manifest-path whatsapp-archive-viewer/src-tauri/Cargo.toml
+//   Run tests with: cargo test --manifest-path whatsapp-archive-viewer-pc/project-code/src-tauri/Cargo.toml
 
 // =============================================================================
 

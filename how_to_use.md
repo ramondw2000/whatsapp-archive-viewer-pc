@@ -5,7 +5,7 @@
 Run the setup script to automatically install all dependencies:
 
 ```powershell
-Start-Process powershell -Verb RunAs -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', 'c:\xampp\htdocs\whatsapp-chat-backup-tool-2.0\setup.ps1'
+Start-Process powershell -Verb RunAs -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', 'D:\programming\whatsapp-archive-viewer-pc\setup.ps1'
 ```
 
 This installs:
@@ -23,7 +23,7 @@ If everything is already installed, the script will confirm and exit.
 To run the app in development mode:
 
 ```powershell
-cd whatsapp-archive-viewer
+cd D:\programming\whatsapp-archive-viewer-pc\project-code
 try { taskkill /F /IM node.exe } catch {}; npm run tauri dev
 ```
 
@@ -37,19 +37,19 @@ This command will:
 This command creates the Windows installer (.exe):
 
 ```powershell
-cd whatsapp-archive-viewer
+cd D:\programming\whatsapp-archive-viewer-pc\project-code
 npx tauri build
 ```
 
 The installer will be generated at:
-`D:\cargo-target\whatsapp-archive-viewer\release\bundle\nsis\WhatsApp Archive Viewer_0.1.0_x64-setup.exe`
+`D:\cargo-target\whatsapp-archive-viewer-pc\release\bundle\nsis\WhatsApp Archive Viewer (PC)_0.1.0_x64-setup.exe`
 
 ## Android Setup (First Time)
 
 Run the Android setup script as Administrator to install all Android build requirements:
 
 ```powershell
-Start-Process powershell -Verb RunAs -ArgumentList "-NoExit", "-Command", "Set-Location 'D:\programming\whatsapp-chat-backup-tool-2.0'; .\setup-android.ps1"
+Start-Process powershell -Verb RunAs -ArgumentList "-NoExit", "-Command", "Set-Location 'D:\programming\whatsapp-archive-viewer-pc'; .\setup-android.ps1"
 ```
 
 This installs:
@@ -61,7 +61,7 @@ This installs:
 After the script finishes, initialize the Android project (one-time only):
 
 ```powershell
-cd whatsapp-archive-viewer
+cd D:\programming\whatsapp-archive-viewer-pc\project-code
 npx tauri android init
 ```
 
@@ -72,7 +72,7 @@ npx tauri android init
 Use the build script (workaround for a Windows symlink limitation with `npx tauri android build`):
 
 ```powershell
-cd d:\programming\whatsapp-chat-backup-tool-2.0
+cd D:\programming\whatsapp-archive-viewer-pc
 .\build-android.ps1
 ```
 
@@ -83,7 +83,7 @@ This script:
 4. Runs Gradle to produce the APK
 
 The APK will be generated at:
-`whatsapp-archive-viewer\src-tauri\gen\android\app\build\outputs\apk\universal\release\app-universal-release-unsigned.apk`
+`whatsapp-archive-viewer-pc\project-code\src-tauri\gen\android\app\build\outputs\apk\universal\release\app-universal-release-unsigned.apk`
 
 To install on your phone:
 1. Copy the APK to your phone
@@ -93,7 +93,7 @@ To install on your phone:
 ## Run on Android Device / Emulator
 
 ```powershell
-cd whatsapp-archive-viewer
+cd D:\programming\whatsapp-archive-viewer-pc\project-code
 npx tauri android dev
 ```
 
@@ -114,4 +114,4 @@ Requires a physical Android phone with **USB debugging enabled**, or an Android 
 **Android symlink error (`Onjuiste functie` / os error 1):**
 - `npx tauri android build` fails on Windows because it tries to create a cross-location symlink
 - Use `build-android.ps1` instead — it copies the `.so` files directly and calls Gradle
-- The Rust `.so` is compiled to `D:\cargo-target\whatsapp-archive-viewer\<target>\release\`
+- The Rust `.so` is compiled to `D:\cargo-target\whatsapp-archive-viewer-pc\<target>\release\`

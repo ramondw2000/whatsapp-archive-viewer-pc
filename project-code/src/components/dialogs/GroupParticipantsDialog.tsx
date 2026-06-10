@@ -1,0 +1,79 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { GroupAvatar } from "../GroupAvatar";
+
+interface GroupParticipantsDialogProps {
+  chatName: string;
+  participants: string[];
+  photoPath: string | null | undefined;
+  onPhotoUpload: () => void;
+  onCancel: () => void;
+  onPhotoClick: (photoPath: string) => void;
+  onPhotoRemove: () => void;
+  onSave: () => void;
+}
+
+export function GroupParticipantsDialog({
+  chatName,
+  participants,
+  photoPath,
+  onPhotoUpload,
+  onCancel,
+  onPhotoClick,
+  onPhotoRemove,
+  onSave
+}: GroupParticipantsDialogProps) {
+  function getInitials(name: string): string {
+    return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  }
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog-content profile-dialog">
+        <h3>Group Info</h3>
+        <p className="profile-chat-name">{chatName}</p>
+        <div className="profile-photo-section">
+          {photoPath ? (
+            <img src={convertFileSrc(photoPath)} alt="Group" className="profile-photo" onClick={() => onPhotoClick(photoPath)} style={{ cursor: 'pointer' }} />
+          ) : (
+            participants.length > 0 ? (
+              <GroupAvatar participants={participants} size="dialog" />
+            ) : (
+              <div className="profile-photo-placeholder">
+                <svg viewBox="0 0 100 100" className="profile-icon">
+                  <circle cx="35" cy="38" r="16" fill="#e6b800"/>
+                  <circle cx="65" cy="38" r="16" fill="#e6b800"/>
+                  <path d="M5,85 Q5,60 35,60 Q50,60 50,60 Q50,60 65,60 Q95,60 95,85 L95,95 L5,95 Z" fill="#e6b800"/>
+                </svg>
+              </div>
+            )
+          )}
+          <button type="button" className="upload-photo-btn" onClick={onPhotoUpload}>
+            📷 Upload Group Photo
+          </button>
+          {photoPath && (
+            <button type="button" className="upload-photo-btn remove-photo-btn" onClick={onPhotoRemove}>
+              🗑️ Remove Photo
+            </button>
+          )}
+        </div>
+        <p className="group-participant-count">{participants.length} participant{participants.length !== 1 ? "s" : ""}</p>
+        <div className="group-participants-list">
+          {participants.map(name => (
+            <div key={name} className="group-participant-item">
+              <div className="group-participant-avatar">{getInitials(name)}</div>
+              <span className="group-participant-name">{name}</span>
+            </div>
+          ))}
+        </div>
+        <div className="dialog-buttons">
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" onClick={onSave} className="primary">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
