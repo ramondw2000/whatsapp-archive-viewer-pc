@@ -1,3 +1,3 @@
-cd whatsapp-archive-viewer-pc\whatsapp-archive-viewer-pc
+cd whatsapp-archive-viewer-pc\project-code
 npm install
 npm run tauri:dev

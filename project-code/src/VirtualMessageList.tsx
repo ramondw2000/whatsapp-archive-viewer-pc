@@ -31,8 +31,8 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
     scrollToBottom: () => {
       virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'smooth' });
     },
-    scrollToIndex: (index: number) => {
-      virtuosoRef.current?.scrollToIndex({ index, behavior: 'smooth', align: 'center' });
+    scrollToIndex: (index: number, offset?: number) => {
+      virtuosoRef.current?.scrollToIndex({ index, behavior: 'smooth', align: 'center', offset });
     },
     adjustScrollBy: (pixels: number) => {
       if (scrollerRef.current) {

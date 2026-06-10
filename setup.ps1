@@ -29,7 +29,7 @@ if (Test-Path $vsWherePath) {
     $cppPath = & $vsWherePath -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
     if ($cppPath) { $hasCppTools = $true }
 }
-$projectDir = Join-Path $PSScriptRoot "whatsapp-archive-viewer-pc"
+$projectDir = Join-Path $PSScriptRoot "project-code"
 $hasNodeModules = Test-Path (Join-Path $projectDir "node_modules")
 
 if ($hasNode -and $hasRust -and $hasCppTools -and $hasNodeModules) {
@@ -41,7 +41,7 @@ if ($hasNode -and $hasRust -and $hasCppTools -and $hasNodeModules) {
     Write-Host "  npm deps:   installed" -ForegroundColor Green
     Write-Host ""
     Write-Host "To start the app:" -ForegroundColor Cyan
-    Write-Host "  cd whatsapp-archive-viewer-pc" -ForegroundColor White
+    Write-Host "  cd project-code" -ForegroundColor White
     Write-Host "  npm run tauri dev" -ForegroundColor White
     Write-Host ""
     Read-Host "Press Enter to exit"
@@ -161,9 +161,9 @@ if ($hasCpp) {
 
 # --- 4. Install npm dependencies ---
 Write-Host "[4/4] Installing npm dependencies..." -ForegroundColor Yellow
-$projectDir = Join-Path $PSScriptRoot "whatsapp-archive-viewer-pc"
+$projectDir = Join-Path $PSScriptRoot "project-code"
 if (-not (Test-Path (Join-Path $projectDir "package.json"))) {
-    Write-Host "  ERROR: Cannot find whatsapp-archive-viewer-pc/package.json" -ForegroundColor Red
+    Write-Host "  ERROR: Cannot find project-code/package.json" -ForegroundColor Red
     Write-Host "  Make sure this script is in the project root directory." -ForegroundColor Yellow
     Read-Host "Press Enter to exit"
     exit 1
@@ -189,7 +189,7 @@ Write-Host " Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "To start the app:" -ForegroundColor Cyan
-Write-Host "  cd whatsapp-archive-viewer-pc" -ForegroundColor White
+Write-Host "  cd project-code" -ForegroundColor White
 Write-Host "  npm run tauri dev" -ForegroundColor White
 Write-Host ""
 Write-Host "NOTE: You may need to restart your terminal for PATH changes to take effect." -ForegroundColor Yellow
