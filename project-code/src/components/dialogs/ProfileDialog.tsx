@@ -98,7 +98,7 @@ export function ProfileDialog({
         <p className="profile-chat-name">{chatName}</p>
         <div className="profile-photo-section">
           {photoSrc ? (
-            <img src={photoSrc} alt="Profile" className="profile-photo" onClick={() => photoPath && onPhotoClick(photoPath)} style={{ cursor: 'pointer' }} />
+            <img src={photoSrc} alt="Profile" className="profile-photo" onClick={() => photoSrc && onPhotoClick(photoSrc)} style={{ cursor: 'pointer' }} />
           ) : (
             <div className="profile-photo-placeholder">
               <svg viewBox="0 0 100 100" className="profile-icon">
