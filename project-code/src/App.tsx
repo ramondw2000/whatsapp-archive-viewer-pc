@@ -31,6 +31,7 @@ import { UsernameDialog } from "./components/dialogs/UsernameDialog";
 import { GroupParticipantsDialog } from "./components/dialogs/GroupParticipantsDialog";
 import { ProfileDialog } from "./components/dialogs/ProfileDialog";
 import { GroupAvatar } from "./components/GroupAvatar";
+import { ProfileImage } from "./components/ProfileImage";
 import { MediaFallback } from "./components/media/MediaFallback";
 import { StickerImage } from "./components/media/StickerImage";
 import { GifPlayer } from "./components/media/GifPlayer";
@@ -2199,6 +2200,18 @@ function App() {
 
 
   const [jumpedIndex, setJumpedIndex] = useState<number | null>(null);
+  const [followOutput, setFollowOutput] = useState<boolean | 'auto' | 'smooth'>('smooth');
+
+  // Scroll to jumped message when index changes
+  useEffect(() => {
+    if (jumpedIndex !== null && jumpedIndex >= 0) {
+      console.log("Scrolling to jumped index:", jumpedIndex);
+      // Small delay to ensure the message list is visible
+      setTimeout(() => {
+        virtualListRef.current?.scrollToIndex(jumpedIndex);
+      }, 100);
+    }
+  }, [jumpedIndex]);
 
 
   const [searchResultCursor, setSearchResultCursor] = useState<number>(0);
@@ -4702,14 +4715,21 @@ function App() {
     if (pos !== -1) setSearchResultCursor(pos);
 
 
+    console.log("jumpToMessage called with index:", index);
+
+
     setJumpedIndex(index);
 
 
     setShowFavorites(false);
 
 
-    // Scroll directly to the message regardless of search results
-    virtualListRef.current?.scrollToIndex(index);
+    // Disable followOutput to prevent auto-scroll to bottom
+    setFollowOutput(false);
+
+
+    // Re-enable followOutput after a short delay
+    setTimeout(() => setFollowOutput('smooth'), 500);
 
 
   }
@@ -7254,7 +7274,7 @@ useEffect(() => {
                 {chat.photo_path ? (
 
 
-                  <img src={convertFileSrc(chat.photo_path)} alt={chat.name} className="chat-avatar chat-avatar--photo" />
+                  <ProfileImage photoPath={chat.photo_path} alt={chat.name} className="chat-avatar chat-avatar--photo" />
 
 
                 ) : chat.is_group ? (
@@ -7393,7 +7413,7 @@ useEffect(() => {
                   profile?.photo_path ? (
 
 
-                    <img src={convertFileSrc(profile.photo_path)} alt="Group" className="chat-avatar large chat-avatar--photo" />
+                    <ProfileImage photoPath={profile.photo_path} alt="Group" className="chat-avatar large chat-avatar--photo" />
 
 
                   ) : (
@@ -7438,7 +7458,7 @@ useEffect(() => {
                   profile?.photo_path ? (
 
 
-                    <img src={convertFileSrc(profile.photo_path)} alt="Profile" className="chat-avatar large chat-avatar--photo" />
+                    <ProfileImage photoPath={profile.photo_path} alt="Profile" className="chat-avatar large chat-avatar--photo" />
 
 
                   ) : (
@@ -7708,15 +7728,16 @@ useEffect(() => {
 
 
                         const messagesWithIndex = result.messages.map(fav => ({
-
-
                           ...fav,
-
-
-                          _idx: messages.findIndex(m => m.timestamp === fav.timestamp && m.sender === fav.sender && m.content === fav.content)
-
-
+                          _idx: fav.id ?? -1
                         }));
+
+                        console.log("Favorites debug:", {
+                          totalMessages: messages.length,
+                          favoritesCount: result.messages.length,
+                          firstFav: result.messages[0],
+                          firstFavIdx: result.messages[0]?.id
+                        });
 
 
                         setFavoriteMessages(messagesWithIndex);
@@ -8353,6 +8374,9 @@ useEffect(() => {
 
 
                     messages={messages}
+
+
+                    followOutput={followOutput}
 
 
                     renderMessage={(_msg, idx) => {

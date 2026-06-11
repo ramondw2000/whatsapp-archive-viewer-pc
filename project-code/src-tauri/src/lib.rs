@@ -169,7 +169,8 @@ fn validate_url_scheme(url: &str) -> Result<(), String> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub struct Message {
-
+    #[serde(default)]
+    pub id: Option<i64>,
     pub timestamp: String,
 
     pub sender: String,
@@ -2390,7 +2391,7 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                 
 
                 current_msg = Some(Message {
-
+                    id: None,
                     timestamp,
 
                     sender,
@@ -2458,7 +2459,7 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
                         }
 
                         current_msg = Some(Message {
-
+                            id: None,
                             timestamp: format!("{} {}", date_str, time_str),
 
                             sender: "System".to_string(),
@@ -2619,7 +2620,7 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
         (Some(lim), Some(off)) => format!(
 
-            "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {} OFFSET {}",
+            "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {} OFFSET {}",
 
             lim, off
 
@@ -2627,13 +2628,13 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
         (Some(lim), None) => format!(
 
-            "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {}",
+            "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {}",
 
             lim
 
         ),
 
-        _ => "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC".to_string(),
+        _ => "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC".to_string(),
 
     };
 
@@ -2645,26 +2646,25 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
     let messages = stmt.query_map([&chat_id], |row| {
 
-        let id: i64 = row.get(0)?;
-        let media: String = row.get(5)?;
+        let media: String = row.get(4)?;
 
-        let duration: String = row.get(6)?;
+        let duration: String = row.get(5)?;
 
-        let tag_ext: Option<String> = row.get(7)?;
+        let tag_ext: Option<String> = row.get(6)?;
 
-        let display_name: Option<String> = row.get(8)?;
+        let display_name: Option<String> = row.get(7)?;
 
-        let is_favorite: Option<i64> = row.get(9)?;
+        let is_favorite: Option<i64> = row.get(8)?;
 
         Ok(Message {
-            id: Some(id),
-            timestamp: row.get(1)?,
+            id: None,
+            timestamp: row.get(0)?,
 
-            sender: row.get(2)?,
+            sender: row.get(1)?,
 
-            msg_type: row.get(3)?,
+            msg_type: row.get(2)?,
 
-            content: row.get(4)?,
+            content: row.get(3)?,
 
             media: if media.is_empty() { None } else { Some(media) },
 
@@ -5421,12 +5421,19 @@ fn toggle_message_favorite(chat_id: String, message_idx: i64, is_favorite: bool)
 fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
     let conn = get_db();
 
+    // Get total message count first
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
+        [&chat_id],
+        |row| row.get(0)
+    ).map_err(|e| e.to_string())?;
+
     let mut stmt = conn.prepare(
-        "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 AND is_favorite = 1 ORDER BY id DESC"
+        "SELECT (SELECT COUNT(*) FROM messages WHERE chat_id = ?1 AND id <= m.id) - 1 as row_index, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages m WHERE chat_id = ?1 AND is_favorite = 1 ORDER BY id DESC"
     ).map_err(|e| e.to_string())?;
 
     let messages = stmt.query_map([&chat_id], |row| {
-        let id: i64 = row.get(0)?;
+        let row_index: i64 = row.get(0)?;
         let media: String = row.get(5)?;
         let duration: String = row.get(6)?;
         let tag_ext: Option<String> = row.get(7)?;
@@ -5434,7 +5441,7 @@ fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
         let is_favorite: Option<i64> = row.get(9)?;
 
         Ok(Message {
-            id: Some(id),
+            id: Some(row_index),
             timestamp: row.get(1)?,
             sender: row.get(2)?,
             msg_type: row.get(3)?,
@@ -5516,6 +5523,7 @@ fn build_chat_export_data(conn: &Connection, chat_id: &str) -> Result<(String, V
         let media: String = row.get(4)?;
         let duration: String = row.get(5)?;
         Ok(Message {
+            id: None,
             timestamp: row.get(0)?,
             sender: row.get(1)?,
             msg_type: row.get(2)?,
