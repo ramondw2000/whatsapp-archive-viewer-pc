@@ -8,6 +8,7 @@ interface Message {
 interface VirtualMessageListProps {
   messages: Message[];
   renderMessage: (msg: Message, index: number) => React.ReactNode;
+  followOutput?: boolean | 'auto' | 'smooth';
 }
 
 export interface VirtualMessageListRef {
@@ -19,7 +20,8 @@ export interface VirtualMessageListRef {
 
 export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessageListProps>(function VirtualMessageList({
   messages,
-  renderMessage
+  renderMessage,
+  followOutput = 'smooth'
 }, ref) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
@@ -48,7 +50,7 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
       data={messages}
       style={{ height: '100%', width: '100%' }}
       itemContent={(index: number, message: Message) => renderMessage(message, index)}
-      followOutput="smooth"
+      followOutput={followOutput}
       initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
       overscan={800}
       increaseViewportBy={{ top: 400, bottom: 400 }}
