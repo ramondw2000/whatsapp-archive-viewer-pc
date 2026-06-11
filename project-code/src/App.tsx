@@ -4708,7 +4708,8 @@ function App() {
     setShowFavorites(false);
 
 
-    scrollToResult(index);
+    // Scroll directly to the message regardless of search results
+    virtualListRef.current?.scrollToIndex(index);
 
 
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { parsePhoneNumber, formatPhoneNumber, validatePhoneInput, getPlaceholder, phoneOptions } from "../../utils/phoneNumber";
 import type { NameHistoryEntry } from "../../types";
 
@@ -44,6 +44,7 @@ export function ProfileDialog({
 }: ProfileDialogProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
 
   // Parse current phone for editing
   const parsed = parsePhoneNumber(profilePhone);
@@ -63,6 +64,17 @@ export function ProfileDialog({
       setLocalNumber(p.localNumber);
     }
   }, [isEditing, profilePhone]);
+
+  // Load profile photo as base64 when photoPath changes
+  useEffect(() => {
+    if (!photoPath) {
+      setPhotoSrc(null);
+      return;
+    }
+    invoke<string>("read_file_as_base64", { path: photoPath })
+      .then(setPhotoSrc)
+      .catch(() => setPhotoSrc(null));
+  }, [photoPath]);
 
   function formatHistoryDate(raw: string): string {
     const d = new Date(raw);
@@ -85,8 +97,8 @@ export function ProfileDialog({
         <h3>{isEditing ? "Edit Profile" : "Profile"}</h3>
         <p className="profile-chat-name">{chatName}</p>
         <div className="profile-photo-section">
-          {photoPath ? (
-            <img src={convertFileSrc(photoPath)} alt="Profile" className="profile-photo" onClick={() => onPhotoClick(photoPath)} style={{ cursor: 'pointer' }} />
+          {photoSrc ? (
+            <img src={photoSrc} alt="Profile" className="profile-photo" onClick={() => photoPath && onPhotoClick(photoPath)} style={{ cursor: 'pointer' }} />
           ) : (
             <div className="profile-photo-placeholder">
               <svg viewBox="0 0 100 100" className="profile-icon">

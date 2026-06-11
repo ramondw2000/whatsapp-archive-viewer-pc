@@ -2619,7 +2619,7 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
         (Some(lim), Some(off)) => format!(
 
-            "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {} OFFSET {}",
+            "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {} OFFSET {}",
 
             lim, off
 
@@ -2627,13 +2627,13 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
         (Some(lim), None) => format!(
 
-            "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {}",
+            "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT {}",
 
             lim
 
         ),
 
-        _ => "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC".to_string(),
+        _ => "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 ORDER BY id ASC".to_string(),
 
     };
 
@@ -2645,25 +2645,26 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
 
     let messages = stmt.query_map([&chat_id], |row| {
 
-        let media: String = row.get(4)?;
+        let id: i64 = row.get(0)?;
+        let media: String = row.get(5)?;
 
-        let duration: String = row.get(5)?;
+        let duration: String = row.get(6)?;
 
-        let tag_ext: Option<String> = row.get(6)?;
+        let tag_ext: Option<String> = row.get(7)?;
 
-        let display_name: Option<String> = row.get(7)?;
+        let display_name: Option<String> = row.get(8)?;
 
-        let is_favorite: Option<i64> = row.get(8)?;
+        let is_favorite: Option<i64> = row.get(9)?;
 
         Ok(Message {
+            id: Some(id),
+            timestamp: row.get(1)?,
 
-            timestamp: row.get(0)?,
+            sender: row.get(2)?,
 
-            sender: row.get(1)?,
+            msg_type: row.get(3)?,
 
-            msg_type: row.get(2)?,
-
-            content: row.get(3)?,
+            content: row.get(4)?,
 
             media: if media.is_empty() { None } else { Some(media) },
 
@@ -5190,8 +5191,6 @@ async fn pick_profile_photo(app: tauri::AppHandle) -> Result<Option<String>, Str
 
     let (tx, rx) = tokio::sync::oneshot::channel();
 
-    
-
     app.dialog().file()
 
         .add_filter("Images", &["png", "jpg", "jpeg", "jfif", "gif", "webp", "bmp", "tiff", "tif", "avif", "svg", "ico"])
@@ -5202,13 +5201,32 @@ async fn pick_profile_photo(app: tauri::AppHandle) -> Result<Option<String>, Str
 
         });
 
-    
-
     let result = rx.await.map_err(|e| e.to_string())?;
 
-    
+    let picked = match result {
 
-    Ok(result.map(|file| file.to_string()))
+        Some(p) => p.to_string(),
+
+        None => return Ok(None),
+
+    };
+
+    // Copy image into profile_photos dir so it's within allowed scope
+    let app_data = get_app_data_dir();
+    let profile_dir = app_data.join("profile_photos");
+    fs::create_dir_all(&profile_dir).map_err(|e| format!("Failed to create profile photos dir: {}", e))?;
+
+    let src_path = std::path::Path::new(&picked);
+    let ext = src_path.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let dest_filename = format!("profile_{}.{}", timestamp, ext);
+    let dest_path = profile_dir.join(&dest_filename);
+    fs::copy(&src_path, &dest_path).map_err(|e| format!("Failed to copy profile photo: {}", e))?;
+
+    Ok(Some(dest_path.to_string_lossy().to_string()))
 
 }
 
@@ -5404,21 +5422,23 @@ fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
     let conn = get_db();
 
     let mut stmt = conn.prepare(
-        "SELECT timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 AND is_favorite = 1 ORDER BY id DESC"
+        "SELECT id, timestamp, sender, msg_type, content, media, duration, tag_ext, display_name, is_favorite FROM messages WHERE chat_id = ?1 AND is_favorite = 1 ORDER BY id DESC"
     ).map_err(|e| e.to_string())?;
 
     let messages = stmt.query_map([&chat_id], |row| {
-        let media: String = row.get(4)?;
-        let duration: String = row.get(5)?;
-        let tag_ext: Option<String> = row.get(6)?;
-        let display_name: Option<String> = row.get(7)?;
-        let is_favorite: Option<i64> = row.get(8)?;
+        let id: i64 = row.get(0)?;
+        let media: String = row.get(5)?;
+        let duration: String = row.get(6)?;
+        let tag_ext: Option<String> = row.get(7)?;
+        let display_name: Option<String> = row.get(8)?;
+        let is_favorite: Option<i64> = row.get(9)?;
 
         Ok(Message {
-            timestamp: row.get(0)?,
-            sender: row.get(1)?,
-            msg_type: row.get(2)?,
-            content: row.get(3)?,
+            id: Some(id),
+            timestamp: row.get(1)?,
+            sender: row.get(2)?,
+            msg_type: row.get(3)?,
+            content: row.get(4)?,
             media: if media.is_empty() { None } else { Some(media) },
             duration: if duration.is_empty() { None } else { Some(duration) },
             tag_ext,
