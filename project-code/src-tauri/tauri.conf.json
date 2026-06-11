@@ -24,6 +24,8 @@
         "scope": [
           "$APPDATA/WhatsAppArchiveViewer/chats/**",
           "$APPDATA/WhatsAppArchiveViewer/custom/**",
+          "$APPDATA/WhatsAppArchiveViewer/profile_photos/**",
+          "$APPDATA/WhatsAppArchiveViewer/user_backgrounds/**",
           "$RESOURCE/app_backgrounds/**"
         ]
       },

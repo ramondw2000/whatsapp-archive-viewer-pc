@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { MediaFallback } from "./MediaFallback";
 
 interface StickerImageProps {
@@ -20,8 +20,8 @@ export function StickerImage({ chatId, filename }: StickerImageProps) {
     setErr("");
     setExistsInZip(false);
 
-    invoke<string>("get_media_path", { chatId, filename: clean })
-      .then((path) => setSrc(convertFileSrc(path)))
+    invoke<string>("get_media_as_base64", { chatId, filename: clean, mimeHint: null })
+      .then((data) => setSrc(data))
       .catch(async (e) => {
         setErr(String(e));
         try {

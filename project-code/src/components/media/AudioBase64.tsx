@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useLazyVisibility } from "../../LazyMediaImage";
 import { MediaFallback } from "./MediaFallback";
 
@@ -22,8 +22,8 @@ function AudioBase64Inner({ chatId, filename, isVideo }: AudioBase64InnerProps) 
     setExistsInZip(false);
 
     const clean = filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/g, "");
-    invoke<string>("get_media_path", { chatId, filename: clean })
-      .then((path) => setSrc(convertFileSrc(path)))
+    invoke<string>("get_media_as_base64", { chatId, filename: clean, mimeHint: null })
+      .then((data) => setSrc(data))
       .catch(async (e) => {
         setErr(String(e));
         // Check if file exists in ZIP

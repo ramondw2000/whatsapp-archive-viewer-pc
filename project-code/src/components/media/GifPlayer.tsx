@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useLazyVisibility } from "../../LazyMediaImage";
 import { MediaFallback } from "./MediaFallback";
 
@@ -25,8 +25,8 @@ function GifPlayerInner({ chatId, filename, onToggleType, autoPlay = false }: Gi
     setErr("");
     setExistsInZip(false);
 
-    invoke<string>("get_media_path", { chatId, filename: clean })
-      .then((path) => setSrc(convertFileSrc(path)))
+    invoke<string>("get_media_as_base64", { chatId, filename: clean, mimeHint: null })
+      .then((data) => setSrc(data))
       .catch(async (e) => {
         const msg = String(e);
         setErr(msg);
