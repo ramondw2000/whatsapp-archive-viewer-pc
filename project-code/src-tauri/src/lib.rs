@@ -5604,6 +5604,29 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
         }));
     }
 
+    // Export favorites with timestamp, sender, content for reliable matching
+    let mut fav_stmt = conn.prepare(
+        "SELECT timestamp, sender, content FROM messages WHERE chat_id = ?1 AND is_favorite = 1"
+    ).map_err(|e| e.to_string())?;
+
+    let fav_rows = fav_stmt.query_map([chat_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    }).map_err(|e| e.to_string())?;
+
+    for row in fav_rows {
+        let (timestamp, sender, content) = row.map_err(|e| e.to_string())?;
+        all_modifications.push(serde_json::json!({
+            "type": "favorite",
+            "timestamp": timestamp,
+            "sender": sender,
+            "content": content
+        }));
+    }
+
     serde_json::to_string(&all_modifications).map_err(|e| e.to_string())
 }
 
@@ -6169,6 +6192,27 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                     let _ = conn.execute(
                         "INSERT INTO chat_background_history (chat_id, background_path) VALUES (?1, ?2)",
                         params![chat_id, bg]
+                    );
+                }
+            }
+            "favorite" => {
+                let timestamp = modification["timestamp"].as_str().unwrap_or("");
+                let sender = modification["sender"].as_str().unwrap_or("");
+                let content = modification["content"].as_str().unwrap_or("");
+
+                if timestamp.is_empty() || sender.is_empty() { continue; }
+
+                // Find message by timestamp, sender, content
+                let msg_id: Option<i64> = conn.prepare(
+                    "SELECT id FROM messages WHERE chat_id = ?1 AND timestamp = ?2 AND sender = ?3 AND content = ?4"
+                ).ok().and_then(|mut stmt| {
+                    stmt.query_row(params![chat_id, timestamp, sender, content], |row| row.get(0)).ok()
+                });
+
+                if let Some(id) = msg_id {
+                    let _ = conn.execute(
+                        "UPDATE messages SET is_favorite = 1 WHERE id = ?1",
+                        params![id]
                     );
                 }
             }

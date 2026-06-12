@@ -3947,6 +3947,11 @@ function App() {
     try {
 
 
+      // Save pending profile changes for the currently selected chat first
+      if (selectedChat && (editingProfileName !== profile?.name || editingProfileNotes !== profile?.notes || editingProfilePhone !== profile?.phone_number || pendingProfilePhoto !== null)) {
+        await saveProfile();
+      }
+
       // Save modifications for every chat to localStorage before deleting
 
 
