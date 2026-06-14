@@ -5025,6 +5025,27 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
 
     }
 
+    // 3. Export favorite messages
+    let mut fav_stmt = conn.prepare(
+        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx
+         FROM messages m1
+         WHERE m1.chat_id = ?1 AND m1.is_favorite = 1
+         ORDER BY m1.id ASC"
+    ).map_err(|e| e.to_string())?;
+
+    let fav_indices: Vec<i64> = fav_stmt
+        .query_map([&chat_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !fav_indices.is_empty() {
+        all_modifications.push(serde_json::json!({
+            "type": "favorites",
+            "indices": fav_indices
+        }));
+    }
+
     serde_json::to_string(&all_modifications).map_err(|e| e.to_string())
 
 }
@@ -5136,6 +5157,20 @@ fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Resu
                 rusqlite::params![&chat_id, &name, &notes, &photo_path, &phone_number, &background_path],
 
             ).map_err(|e| e.to_string())?;
+
+        } else if mod_type == "favorites" {
+
+            // Restore favorite messages by index
+            if let Some(indices) = mod_entry.get("indices").and_then(|v| v.as_array()) {
+                for idx_val in indices {
+                    if let Some(idx) = idx_val.as_i64() {
+                        conn.execute(
+                            "UPDATE messages SET is_favorite = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
+                            rusqlite::params![&chat_id, &chat_id, idx],
+                        ).map_err(|e| e.to_string())?;
+                    }
+                }
+            }
 
         }
 
@@ -5604,26 +5639,24 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
         }));
     }
 
-    // Export favorites with timestamp, sender, content for reliable matching
+    // Export favorites
     let mut fav_stmt = conn.prepare(
-        "SELECT timestamp, sender, content FROM messages WHERE chat_id = ?1 AND is_favorite = 1"
+        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx
+         FROM messages m1
+         WHERE m1.chat_id = ?1 AND m1.is_favorite = 1
+         ORDER BY m1.id ASC"
     ).map_err(|e| e.to_string())?;
 
-    let fav_rows = fav_stmt.query_map([chat_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    }).map_err(|e| e.to_string())?;
+    let fav_indices: Vec<i64> = fav_stmt
+        .query_map([chat_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
 
-    for row in fav_rows {
-        let (timestamp, sender, content) = row.map_err(|e| e.to_string())?;
+    if !fav_indices.is_empty() {
         all_modifications.push(serde_json::json!({
-            "type": "favorite",
-            "timestamp": timestamp,
-            "sender": sender,
-            "content": content
+            "type": "favorites",
+            "indices": fav_indices
         }));
     }
 
@@ -6192,27 +6225,6 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                     let _ = conn.execute(
                         "INSERT INTO chat_background_history (chat_id, background_path) VALUES (?1, ?2)",
                         params![chat_id, bg]
-                    );
-                }
-            }
-            "favorite" => {
-                let timestamp = modification["timestamp"].as_str().unwrap_or("");
-                let sender = modification["sender"].as_str().unwrap_or("");
-                let content = modification["content"].as_str().unwrap_or("");
-
-                if timestamp.is_empty() || sender.is_empty() { continue; }
-
-                // Find message by timestamp, sender, content
-                let msg_id: Option<i64> = conn.prepare(
-                    "SELECT id FROM messages WHERE chat_id = ?1 AND timestamp = ?2 AND sender = ?3 AND content = ?4"
-                ).ok().and_then(|mut stmt| {
-                    stmt.query_row(params![chat_id, timestamp, sender, content], |row| row.get(0)).ok()
-                });
-
-                if let Some(id) = msg_id {
-                    let _ = conn.execute(
-                        "UPDATE messages SET is_favorite = 1 WHERE id = ?1",
-                        params![id]
                     );
                 }
             }
