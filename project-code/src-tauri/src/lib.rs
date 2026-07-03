@@ -5457,7 +5457,7 @@ fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
     let conn = get_db();
 
     // Get total message count first
-    let count: i64 = conn.query_row(
+    let _count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
         [&chat_id],
         |row| row.get(0)
