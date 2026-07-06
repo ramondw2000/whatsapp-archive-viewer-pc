@@ -2088,7 +2088,7 @@ function App() {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
 
 
-  const [pressTimers, setPressTimers] = useState<Map<number, number>>(new Map());
+  const [pressTimers, setPressTimers] = useState<Map<number, ReturnType<typeof setTimeout> | undefined>>(new Map());
 
 
   const [lastLongPressedIndex, setLastLongPressedIndex] = useState<number | null>(null);
