@@ -7396,15 +7396,6 @@ useEffect(() => {
 
               <div className="chat-header-left">
 
-                {isMobile && (
-                  <button
-                    className="mobile-back-btn"
-                    onClick={() => setSelectedChat(null)}
-                    title="Back"
-                  >
-                    ‹
-                  </button>
-                )}
 
 
                 {selectedChatData?.is_group ? (
@@ -7802,6 +7793,13 @@ useEffect(() => {
 
               </button>
 
+              <button
+                className="close-chat-btn"
+                onClick={() => setSelectedChat(null)}
+                title="Close chat"
+              >
+                ✕
+              </button>
 
             </div>
 

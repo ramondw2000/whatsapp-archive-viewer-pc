@@ -5418,31 +5418,44 @@ input, textarea {
   }
 }
 
-/* Mobile back button */
-.mobile-back-btn {
-  display: none;
-  background: none;
-  border: none;
-  color: white;
-  font-size: 28px;
+/* Close chat button */
+.close-chat-btn {
+  background: rgba(0,0,0,0.08);
+  border: 1px solid rgba(0,0,0,0.18);
+  color: var(--wa-text);
+  font-size: 15px;
   line-height: 1;
-  padding: 0 10px 0 0;
+  padding: 4px 9px;
   cursor: pointer;
-  min-width: 36px;
-  min-height: 44px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 6px;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.close-chat-btn:hover {
+  background: rgba(220,50,50,0.15);
+  border-color: rgba(220,50,50,0.5);
+  color: #c0392b;
+}
+[data-theme="dark"] .close-chat-btn {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+  color: var(--wa-text);
+}
+[data-theme="dark"] .close-chat-btn:hover {
+  background: rgba(220,50,50,0.4);
+  border-color: transparent;
+  color: white;
 }
 
 /*  900px additions  */
 @media (max-width: 900px) {
   .sidebar {
     min-width: unset;
-  }
-
-  .mobile-back-btn {
-    display: flex;
   }
 
   .messages-container {
