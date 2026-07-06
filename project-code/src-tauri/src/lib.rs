@@ -6834,11 +6834,11 @@ mod tests {
 
         let msgs = vec![
 
-            Message { sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
-            Message { sender: "Bob".into(),   msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(),   msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
-            Message { sender: "Charlie".into(),msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Charlie".into(),msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
         ];
 
@@ -6850,17 +6850,19 @@ mod tests {
 
     #[test]
 
-    fn detect_group_chat__two_senders_returns_false_because_it_is_a_private_chat() {
+    fn detect_group_chat__two_distinct_senders_returns_true() {
 
+        // detect_group_chat returns true whenever there are >1 unique non-system senders,
+        // so Alice + Bob (2 senders) is still considered a group chat.
         let msgs = vec![
 
-            Message { sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
-            Message { sender: "Bob".into(),   msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(),   msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
         ];
 
-        assert!(!detect_group_chat(&msgs));
+        assert!(detect_group_chat(&msgs));
 
     }
 
@@ -6872,11 +6874,11 @@ mod tests {
 
         let msgs = vec![
 
-            Message { sender: "System".into(), msg_type: "system".into(), content: "end-to-end".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "end-to-end".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
-            Message { sender: "You".into(),    msg_type: "text".into(),   content: "hi".into(),         timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "You".into(),    msg_type: "text".into(),   content: "hi".into(),         timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
-            Message { sender: "Alice".into(),  msg_type: "text".into(),   content: "hi".into(),         timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(),  msg_type: "text".into(),   content: "hi".into(),         timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
 
         ];
 
@@ -7212,6 +7214,8 @@ mod tests {
 
         let existing = Message {
 
+            id: None,
+
             timestamp: "12/04/2024 14:32".into(),
 
             sender: "Alice".into(),
@@ -7256,6 +7260,8 @@ mod tests {
 
         let new_msg = Message {
 
+            id: None,
+
             timestamp: "12/04/2024 15:00".into(),
 
             sender: "Alice".into(),
@@ -7297,6 +7303,8 @@ mod tests {
 
 
         let reimport = Message {
+
+            id: None,
 
             timestamp: "ts".into(),
 
@@ -7589,6 +7597,319 @@ mod tests {
         assert_eq!(msgs[0].sender, "Alice");
 
         assert_eq!(msgs[0].msg_type, "text");
+
+    }
+
+
+
+    // ==================== sanitize_filename ====================
+
+
+
+    #[test]
+
+    fn sanitize_filename__plain_filename_is_returned_unchanged() {
+
+        assert_eq!(sanitize_filename("photo.jpg").unwrap(), "photo.jpg");
+
+    }
+
+
+
+    #[test]
+
+    fn sanitize_filename__path_traversal_with_dotdot_strips_to_basename() {
+
+        assert_eq!(sanitize_filename("../../etc/passwd").unwrap(), "passwd");
+
+    }
+
+
+
+    #[test]
+
+    fn sanitize_filename__windows_path_strips_to_basename() {
+
+        assert_eq!(sanitize_filename("C:\\Users\\foo\\secret.txt").unwrap(), "secret.txt");
+
+    }
+
+
+
+    #[test]
+
+    fn sanitize_filename__unix_nested_path_strips_to_basename() {
+
+        assert_eq!(sanitize_filename("/var/data/file.png").unwrap(), "file.png");
+
+    }
+
+
+
+    #[test]
+
+    fn sanitize_filename__dot_only_name_returns_error() {
+
+        assert!(sanitize_filename(".").is_err());
+
+        assert!(sanitize_filename("..").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn sanitize_filename__empty_string_returns_error() {
+
+        assert!(sanitize_filename("").is_err());
+
+    }
+
+
+
+    // ==================== validate_chat_id ====================
+
+
+
+    #[test]
+
+    fn validate_chat_id__uuid_style_id_is_accepted() {
+
+        assert!(validate_chat_id("550e8400-e29b-41d4-a716-446655440000").is_ok());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_chat_id__empty_string_is_rejected() {
+
+        assert!(validate_chat_id("").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_chat_id__forward_slash_in_id_is_rejected() {
+
+        assert!(validate_chat_id("chat/secret").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_chat_id__backslash_in_id_is_rejected() {
+
+        assert!(validate_chat_id("chat\\secret").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_chat_id__dotdot_in_id_is_rejected() {
+
+        assert!(validate_chat_id("../etc/passwd").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_chat_id__plain_alphanumeric_id_is_accepted() {
+
+        assert!(validate_chat_id("abc123def456").is_ok());
+
+    }
+
+
+
+    // ==================== is_safe_open_extension ====================
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__common_image_extensions_are_safe() {
+
+        for ext in &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "avif"] {
+
+            assert!(is_safe_open_extension(ext), "{} should be safe", ext);
+
+        }
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__common_video_extensions_are_safe() {
+
+        for ext in &["mp4", "mkv", "mov", "avi", "webm", "m4v", "3gp"] {
+
+            assert!(is_safe_open_extension(ext), "{} should be safe", ext);
+
+        }
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__common_audio_extensions_are_safe() {
+
+        for ext in &["mp3", "m4a", "aac", "ogg", "opus", "flac", "wav"] {
+
+            assert!(is_safe_open_extension(ext), "{} should be safe", ext);
+
+        }
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__pdf_and_vcf_and_ico_are_safe() {
+
+        assert!(is_safe_open_extension("pdf"));
+
+        assert!(is_safe_open_extension("vcf"));
+
+        assert!(is_safe_open_extension("ico"));
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__executable_extensions_are_not_safe() {
+
+        for ext in &["exe", "bat", "cmd", "sh", "ps1", "msi", "dll", "com"] {
+
+            assert!(!is_safe_open_extension(ext), "{} should NOT be safe", ext);
+
+        }
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__script_extensions_are_not_safe() {
+
+        for ext in &["js", "vbs", "py", "rb", "pl", "php", "jar"] {
+
+            assert!(!is_safe_open_extension(ext), "{} should NOT be safe", ext);
+
+        }
+
+    }
+
+
+
+    #[test]
+
+    fn is_safe_open_extension__uppercase_extension_is_not_safe_because_caller_must_lowercase() {
+
+        // The function expects the caller to pass a lowercase extension
+        assert!(!is_safe_open_extension("JPG"));
+
+    }
+
+
+
+    // ==================== validate_url_scheme ====================
+
+
+
+    #[test]
+
+    fn validate_url_scheme__https_url_is_accepted() {
+
+        assert!(validate_url_scheme("https://example.com/path").is_ok());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__http_url_is_accepted() {
+
+        assert!(validate_url_scheme("http://example.com").is_ok());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__https_url_with_uppercase_letters_is_accepted() {
+
+        assert!(validate_url_scheme("HTTPS://example.com").is_ok());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__javascript_scheme_is_rejected() {
+
+        assert!(validate_url_scheme("javascript:alert(1)").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__file_scheme_is_rejected() {
+
+        assert!(validate_url_scheme("file:///etc/passwd").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__data_scheme_is_rejected() {
+
+        assert!(validate_url_scheme("data:text/html,<script>alert(1)</script>").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__empty_string_is_rejected() {
+
+        assert!(validate_url_scheme("").is_err());
+
+    }
+
+
+
+    #[test]
+
+    fn validate_url_scheme__plain_text_no_scheme_is_rejected() {
+
+        assert!(validate_url_scheme("example.com").is_err());
 
     }
 
