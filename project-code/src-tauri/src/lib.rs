@@ -305,7 +305,7 @@ fn mp4_duration_secs(file_path: &Path) -> Option<f64> {
 
     let mut buf = vec![0u8; file_len.min(1_000_000) as usize];
 
-    f.read(&mut buf).ok()?;
+    f.read_exact(&mut buf).ok()?;
 
 
 

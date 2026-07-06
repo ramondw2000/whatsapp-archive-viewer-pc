@@ -3,6 +3,7 @@
  */
 
 export interface Message {
+  id?: number | null;
   timestamp: string;
   sender: string;
   type: string;

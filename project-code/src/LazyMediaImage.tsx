@@ -306,7 +306,7 @@ export function LazyMediaImage({
 
     // Scroll listener only for unload checks — debounced at 250ms, runs checkAndLoad
     // which handles the unload logic. Per-instance but cheap since isLoaded guards it.
-    let scrollTimeout: number;
+    let scrollTimeout: ReturnType<typeof setTimeout>;
     const debouncedUnloadCheck = () => {
       clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(() => {
