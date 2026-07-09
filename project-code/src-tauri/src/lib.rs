@@ -908,7 +908,31 @@ fn init_database() -> SqliteResult<Connection> {
 
     )?;
 
+    // Create file renames table
 
+    conn.execute(
+
+        "CREATE TABLE IF NOT EXISTS chat_file_renames (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            chat_id TEXT NOT NULL,
+
+            message_index INTEGER NOT NULL,
+
+            original_filename TEXT NOT NULL,
+
+            new_filename TEXT NOT NULL,
+
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+
+        )",
+
+        [],
+
+    )?;
 
     Ok(conn)
 
@@ -3360,6 +3384,12 @@ fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, ne
 
 
 
+    // Record the rename in history
+    conn.execute(
+        "INSERT INTO chat_file_renames (chat_id, message_index, original_filename, new_filename) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![chat_id, message_idx, old_filename, new_filename],
+    ).map_err(|e| e.to_string())?;
+
     Ok(())
 
 }
@@ -5742,6 +5772,59 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
         }));
     }
 
+
+    // Export file renames
+    let mut rename_stmt = conn.prepare(
+        "SELECT message_index, original_filename, new_filename FROM chat_file_renames WHERE chat_id = ?1 ORDER BY changed_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let renames: Vec<(i64, String, String)> = rename_stmt.query_map([chat_id], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    if !renames.is_empty() {
+        all_modifications.push(serde_json::json!({
+            "type": "file_renames",
+            "renames": renames.iter().map(|(idx, orig, new)| serde_json::json!({
+                "message_index": idx,
+                "original_filename": orig,
+                "new_filename": new
+            })).collect::<Vec<_>>()
+        }));
+    }
+
+    // Export name history
+    let mut name_history_stmt = conn.prepare(
+        "SELECT name, changed_at FROM chat_name_history WHERE chat_id = ?1 ORDER BY changed_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let name_history: Vec<(String, String)> = name_history_stmt.query_map([chat_id], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    if !name_history.is_empty() {
+        all_modifications.push(serde_json::json!({
+            "type": "name_history",
+            "entries": name_history.iter().map(|(name, changed_at)| serde_json::json!({
+                "name": name,
+                "changed_at": changed_at
+            })).collect::<Vec<_>>()
+        }));
+    }
+
+    // Export background history
+    let mut bg_history_stmt = conn.prepare(
+        "SELECT background_path, changed_at FROM chat_background_history WHERE chat_id = ?1 ORDER BY changed_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let bg_history: Vec<(String, String)> = bg_history_stmt.query_map([chat_id], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    if !bg_history.is_empty() {
+        all_modifications.push(serde_json::json!({
+            "type": "background_history",
+            "entries": bg_history.iter().map(|(path, changed_at)| serde_json::json!({
+                "background_path": path,
+                "changed_at": changed_at
+            })).collect::<Vec<_>>()
+        }));
+    }
+
     serde_json::to_string(&all_modifications).map_err(|e| e.to_string())
 }
 
@@ -6308,6 +6391,88 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                         "INSERT INTO chat_background_history (chat_id, background_path) VALUES (?1, ?2)",
                         params![chat_id, bg]
                     );
+                }
+            }
+            "favorites" => {
+                // Restore favorite messages by index
+                if let Some(indices) = modification["indices"].as_array() {
+                    for idx_val in indices {
+                        if let Some(idx) = idx_val.as_i64() {
+                            let _ = conn.execute(
+                                "UPDATE messages SET is_favorite = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
+                                params![chat_id, chat_id, idx]
+                            );
+                        }
+                    }
+                }
+            }
+            "file_renames" => {
+                // Restore file renames
+                if let Some(renames) = modification["renames"].as_array() {
+                    let app_data = get_app_data_dir();
+                    let media_dir = app_data.join("chats").join(chat_id).join("media");
+                    for rename in renames {
+                        if let (Some(idx), Some(orig), Some(new)) = (
+                            rename["message_index"].as_i64(),
+                            rename["original_filename"].as_str(),
+                            rename["new_filename"].as_str()
+                        ) {
+                            let old_path = media_dir.join(orig);
+                            let new_path = media_dir.join(new);
+                            if old_path.exists() && !new_path.exists() {
+                                let _ = fs::rename(&old_path, &new_path);
+                                // Update database media column
+                                let _ = conn.execute(
+                                    "UPDATE messages SET media = ?1 WHERE chat_id = ?2 AND id = (SELECT id FROM messages WHERE chat_id = ?3 ORDER BY id LIMIT 1 OFFSET ?4)",
+                                    params![new, chat_id, chat_id, idx]
+                                );
+                                // Record in history
+                                let _ = conn.execute(
+                                    "INSERT INTO chat_file_renames (chat_id, message_index, original_filename, new_filename) VALUES (?1, ?2, ?3, ?4)",
+                                    params![chat_id, idx, orig, new]
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            "name_history" => {
+                // Restore name history
+                if let Some(entries) = modification["entries"].as_array() {
+                    for entry in entries {
+                        if let (Some(name), Some(changed_at)) = (
+                            entry["name"].as_str(),
+                            entry["changed_at"].as_str()
+                        ) {
+                            let _ = conn.execute(
+                                "INSERT INTO chat_name_history (chat_id, name, changed_at) VALUES (?1, ?2, ?3)",
+                                params![chat_id, name, changed_at]
+                            );
+                        }
+                    }
+                }
+            }
+            "background_history" => {
+                // Restore background history
+                if let Some(entries) = modification["entries"].as_array() {
+                    for entry in entries {
+                        if let (Some(path), Some(changed_at)) = (
+                            entry["background_path"].as_str(),
+                            entry["changed_at"].as_str()
+                        ) {
+                            // Remap path to new chat's custom dir
+                            let remapped: Option<String> = std::path::Path::new(path).file_name().and_then(|fname| {
+                                let new_path = get_app_data_dir().join("chats").join(chat_id).join("custom").join(fname);
+                                if new_path.exists() { Some(new_path.to_string_lossy().to_string()) } else { None }
+                            });
+                            if let Some(ref bg) = remapped {
+                                let _ = conn.execute(
+                                    "INSERT INTO chat_background_history (chat_id, background_path, changed_at) VALUES (?1, ?2, ?3)",
+                                    params![chat_id, bg, changed_at]
+                                );
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
