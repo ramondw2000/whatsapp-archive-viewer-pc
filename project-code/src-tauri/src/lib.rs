@@ -6233,7 +6233,16 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                 params![&last_content, &last_timestamp, final_epoch, &existing_id],
             ).map_err(|e| format!("Failed to update chat metadata: {}", e))?;
 
-            imported_ids.push(existing_id);
+            imported_ids.push(existing_id.clone());
+
+            // Apply modifications if present (merge scenario)
+            let mods_path = format!("{}/modifications.json", folder);
+            if let Ok(mut file) = archive.by_name(&mods_path) {
+                let mut buf = String::new();
+                if file.read_to_string(&mut buf).is_ok() && buf != "[]" {
+                    let _ = apply_chat_modifications_internal(&mut conn, &existing_id, &buf);
+                }
+            }
             continue;
         }
 

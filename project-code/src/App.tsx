@@ -6196,7 +6196,7 @@ useEffect(() => {
           onCancel={() => { setShowGroupDialog(false); setPendingProfilePhoto(null); }}
 
 
-          onPhotoClick={(photoPath) => setChatLightbox({ filename: photoPath, type: "image", sender: "Group Photo", timestamp: "", index: 0, hideControls: true })}
+          onPhotoClick={(base64Data) => setChatLightbox({ filename: base64Data, type: "image", sender: "Group Photo", timestamp: "", index: 0, hideControls: true })}
 
 
           onPhotoRemove={handlePhotoRemove}
@@ -6265,7 +6265,7 @@ useEffect(() => {
           onResetName={handleResetName}
 
 
-          onPhotoClick={(photoPath) => setChatLightbox({ filename: photoPath, type: "image", sender: "Profile Photo", timestamp: "", index: 0, hideControls: true })}
+          onPhotoClick={(base64Data) => setChatLightbox({ filename: base64Data, type: "image", sender: "Profile Photo", timestamp: "", index: 0, hideControls: true })}
 
 
           onPhotoRemove={handlePhotoRemove}

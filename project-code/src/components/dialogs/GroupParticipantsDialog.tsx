@@ -1,4 +1,5 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useState, useEffect } from 'react';
+import { invoke } from "@tauri-apps/api/core";
 import { GroupAvatar } from "../GroupAvatar";
 
 interface GroupParticipantsDialogProps {
@@ -7,7 +8,7 @@ interface GroupParticipantsDialogProps {
   photoPath: string | null | undefined;
   onPhotoUpload: () => void;
   onCancel: () => void;
-  onPhotoClick: (photoPath: string) => void;
+  onPhotoClick: (base64Data: string) => void;
   onPhotoRemove: () => void;
   onSave: () => void;
 }
@@ -22,6 +23,18 @@ export function GroupParticipantsDialog({
   onPhotoRemove,
   onSave
 }: GroupParticipantsDialogProps) {
+  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!photoPath) {
+      setPhotoSrc(null);
+      return;
+    }
+    invoke<string>("read_file_as_base64", { path: photoPath })
+      .then(setPhotoSrc)
+      .catch(() => setPhotoSrc(null));
+  }, [photoPath]);
+
   function getInitials(name: string): string {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   }
@@ -32,8 +45,8 @@ export function GroupParticipantsDialog({
         <h3>Group Info</h3>
         <p className="profile-chat-name">{chatName}</p>
         <div className="profile-photo-section">
-          {photoPath ? (
-            <img src={convertFileSrc(photoPath)} alt="Group" className="profile-photo" onClick={() => onPhotoClick(photoPath)} style={{ cursor: 'pointer' }} />
+          {photoSrc ? (
+            <img src={photoSrc} alt="Group" className="profile-photo" onClick={() => onPhotoClick(photoSrc)} style={{ cursor: 'pointer' }} />
           ) : (
             participants.length > 0 ? (
               <GroupAvatar participants={participants} size="dialog" />

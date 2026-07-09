@@ -20,7 +20,7 @@ interface ProfileDialogProps {
   onPhotoUpload: () => void;
   onRestoreName: (name: string) => void;
   onResetName: () => void;
-  onPhotoClick: (photoPath: string) => void;
+  onPhotoClick: (base64Data: string) => void;
   onPhotoRemove: () => void;
 }
 

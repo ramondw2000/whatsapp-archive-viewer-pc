@@ -5,9 +5,10 @@ interface ProfileImageProps {
   photoPath: string | null | undefined;
   alt: string;
   className?: string;
+  onPhotoClick?: (base64Data: string) => void;
 }
 
-export function ProfileImage({ photoPath, alt, className }: ProfileImageProps) {
+export function ProfileImage({ photoPath, alt, className, onPhotoClick }: ProfileImageProps) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,5 +22,5 @@ export function ProfileImage({ photoPath, alt, className }: ProfileImageProps) {
   }, [photoPath]);
 
   if (!src) return null;
-  return <img src={src} alt={alt} className={className} />;
+  return <img src={src} alt={alt} className={className} onClick={() => onPhotoClick?.(src)} />;
 }
