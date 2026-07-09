@@ -2006,7 +2006,66 @@ fn detect_group_chat(messages: &[Message]) -> bool {
 
         .collect();
 
-    senders.len() > 1
+    if senders.len() > 1 {
+        return true;
+    }
+
+    // A group chat may have only 1 non-You sender (e.g. you created a group with one person,
+    // or the other person left so only one active sender remains). Detect via system messages.
+    let group_indicators = [
+        // English
+        "created group",
+        "added you",
+        "added ",
+        "changed the group",
+        "changed the subject",
+        "changed this group",
+        "group icon",
+        "joined using this group",
+        "was added",
+        "were added",
+        "left",
+        // Dutch — third-person (someone else did something)
+        "heeft de groep aangemaakt",
+        "heeft de groepsnaam",
+        "heeft het groepspictogram",
+        "heeft de groepsafbeelding",
+        "toegevoegd aan de groep",
+        "heeft je toegevoegd",
+        "heeft de groepsbeschrijving",
+        "is toegevoegd",
+        "zijn toegevoegd",
+        "heeft de groep verlaten",
+        "verwijderd",
+        // Dutch — second-person "Je hebt ..." (you did something in the group)
+        "je hebt deze groep gemaakt",
+        "je hebt de groep gemaakt",
+        "je hebt de groepsnaam",
+        "je hebt de groepsafbeelding",
+        "je hebt de groepsbeschrijving",
+        "je hebt de groep verlaten",
+        "hebt de groep verlaten",
+        "aan de groep toegevoegd",
+        "uit de groep verwijderd",
+        "hebt de groepsafbeelding",
+        // German
+        "hat die Gruppe erstellt",
+        "zur Gruppe hinzugefügt",
+        "hat das Gruppenthema",
+        // Spanish
+        "creó el grupo",
+        "te añadió",
+        // French
+        "a créé le groupe",
+        "vous a ajouté",
+    ];
+
+    messages.iter()
+        .filter(|m| m.sender == "System" || m.msg_type == "system")
+        .any(|m| {
+            let content_lower = m.content.to_lowercase();
+            group_indicators.iter().any(|indicator| content_lower.contains(&indicator.to_lowercase()))
+        })
 
 }
 
@@ -4379,13 +4438,13 @@ fn search_messages(chat_id: String, query: String) -> Result<Vec<SearchResult>, 
 
         
 
-        // Check if content, sender, or timestamp matches
+        // Check if content, sender, or timestamp matches (skip system messages)
 
-        if content.to_lowercase().contains(&search_lower) || 
+        if msg_type != "system" && (content.to_lowercase().contains(&search_lower) || 
 
            sender.to_lowercase().contains(&search_lower) ||
 
-           timestamp.to_lowercase().contains(&search_lower) {
+           timestamp.to_lowercase().contains(&search_lower)) {
 
             results.push(SearchResult {
 
@@ -4483,17 +4542,23 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
     
 
+    // Always exclude system messages from search results
+    where_conditions.push("msg_type != 'system'".to_string());
+
     let where_clause = where_conditions.join(" AND ");
 
     
 
-    // Fetch filtered messages
+    // Fetch filtered messages with their true global row index via correlated subquery.
+    // This ensures message_index matches the frontend messages[] array position regardless
+    // of what filters are active.
 
     let mut stmt = conn.prepare(&format!(
 
-        "SELECT id, timestamp, sender, msg_type, content FROM messages 
-
-         WHERE {} ORDER BY id",
+        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id < m1.id) as row_idx,
+                m1.timestamp, m1.sender, m1.msg_type, m1.content
+         FROM messages m1
+         WHERE {} ORDER BY m1.id",
 
         where_clause
 
@@ -4504,8 +4569,6 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
     let search_lower = filters.query.to_lowercase();
 
     let mut results = Vec::new();
-
-    let mut index: usize = 0;
 
     
 
@@ -4519,7 +4582,7 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
         Ok((
 
-            row.get::<_, i64>(0)?, // id
+            row.get::<_, i64>(0)?, // row_idx (global position)
 
             row.get::<_, String>(1)?, // timestamp
 
@@ -4537,7 +4600,7 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
     for row in rows {
 
-        let (_id, timestamp, sender, msg_type, content) = row.map_err(|e| e.to_string())?;
+        let (row_idx, timestamp, sender, msg_type, content) = row.map_err(|e| e.to_string())?;
 
         
 
@@ -4553,7 +4616,7 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
             results.push(SearchResult {
 
-                message_index: index,
+                message_index: row_idx as usize,
 
                 timestamp,
 
@@ -4566,8 +4629,6 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
             });
 
         }
-
-        index += 1;
 
     }
 
@@ -4656,6 +4717,8 @@ pub struct Profile {
 
     pub phone_number: Option<String>,
 
+    pub original_name: Option<String>,
+
 }
 
 
@@ -4667,6 +4730,18 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
     let conn = get_db();
 
     
+
+    let original_name: Option<String> = conn.query_row(
+
+        "SELECT COALESCE(original_name, name) FROM chats WHERE id = ?1",
+
+        [&chat_id],
+
+        |row| row.get(0),
+
+    ).ok();
+
+
 
     let mut stmt = conn.prepare(
 
@@ -4690,6 +4765,8 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
             phone_number: row.get(4)?,
 
+            original_name: None,
+
         })
 
     });
@@ -4698,7 +4775,7 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
     match profile {
 
-        Ok(p) => Ok(p),
+        Ok(mut p) => { p.original_name = original_name; Ok(p) },
 
         Err(_) => Ok(Profile {
 
@@ -4711,6 +4788,8 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
             photo_path: None,
 
             phone_number: None,
+
+            original_name,
 
         })
 
@@ -4889,20 +4968,6 @@ fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), Stri
         params![&chat_id, &name],
 
     ).map_err(|e| e.to_string())?;
-
-    // Only log restores to a specific name, not resets to original
-
-    if let Some(restored_name) = &name {
-
-        conn.execute(
-
-            "INSERT INTO chat_name_history (chat_id, name) VALUES (?1, ?2)",
-
-            params![&chat_id, restored_name],
-
-        ).map_err(|e| e.to_string())?;
-
-    }
 
     Ok(())
 
@@ -5276,7 +5341,24 @@ async fn pick_global_background(app: tauri::AppHandle) -> Result<Option<String>,
             let _ = tx.send(file_path);
         });
     let result = rx.await.map_err(|e| e.to_string())?;
-    Ok(result.map(|file| file.to_string()))
+    match result {
+        None => Ok(None),
+        Some(file) => {
+            let picked_path_str = file.to_string();
+            let picked = std::path::Path::new(&picked_path_str);
+            let ext = picked.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("jpg")
+                .to_lowercase();
+            let bg_dir = get_app_data_dir().join("user_backgrounds");
+            fs::create_dir_all(&bg_dir).map_err(|e| e.to_string())?;
+            let filename = format!("{}.{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), ext);
+            let dst = bg_dir.join(&filename);
+            fs::copy(picked, &dst).map_err(|e| format!("Failed to copy background: {}", e))?;
+            Ok(Some(dst.to_string_lossy().to_string()))
+        }
+    }
 }
 
 #[tauri::command]

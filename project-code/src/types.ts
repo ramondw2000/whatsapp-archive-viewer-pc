@@ -52,6 +52,7 @@ export interface Profile {
   notes: string | null;
   photo_path: string | null;
   phone_number: string | null;
+  original_name: string | null;
 }
 
 export interface NameHistoryEntry {

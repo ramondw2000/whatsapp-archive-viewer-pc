@@ -1028,6 +1028,34 @@ html, body, #root {
 }
 
 
+.chat-type-filter {
+  display: flex;
+  gap: 4px;
+  padding: 4px 16px 8px;
+}
+
+.chat-filter-btn {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--wa-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--wa-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-filter-btn.active {
+  background: var(--wa-teal);
+  color: #fff;
+  border-color: var(--wa-teal);
+}
+
+.chat-filter-btn:hover:not(.active) {
+  background: var(--wa-hover);
+}
+
 .header-buttons {
 
 
@@ -3986,6 +4014,48 @@ input, textarea {
 }
 
 
+.filter-show-results {
+
+
+  margin-top: 10px;
+
+
+  border-top: 1px solid var(--wa-border);
+
+
+  padding-top: 8px;
+
+
+}
+
+
+.filter-show-results-label {
+
+
+  display: flex;
+
+
+  align-items: center;
+
+
+  gap: 6px;
+
+
+  font-size: 13px;
+
+
+  color: var(--wa-text-secondary);
+
+
+  cursor: pointer;
+
+
+  user-select: none;
+
+
+}
+
+
 .search-box button {
 
 
@@ -4166,10 +4236,10 @@ input, textarea {
 .search-nav-count {
 
 
-  font-size: 12px;
+  font-size: 16px;
 
 
-  color: var(--wa-text-secondary);
+  color: var(--wa-text-primary);
 
 
   min-width: 36px;
@@ -4505,13 +4575,44 @@ input, textarea {
 }
 
 
-/* All messages that contain a search match  subtle left border */
+/* All messages that contain a search match — subtle left border via ::before
+   (pseudo-element avoids contain:layout clipping that affects box-shadow) */
 
 
 .message.search-match {
 
 
-  border-left: 3px solid var(--wa-teal);
+  box-shadow: var(--sh-sm);
+
+
+}
+
+
+.message.search-match::before {
+
+
+  content: '';
+
+
+  position: absolute;
+
+
+  left: 0;
+
+
+  top: 0;
+
+
+  bottom: 0;
+
+
+  width: 3px;
+
+
+  background: var(--wa-teal);
+
+
+  border-radius: var(--r-md) 0 0 var(--r-md);
 
 
 }
@@ -4717,6 +4818,9 @@ input, textarea {
 
 
   z-index: 20000;
+
+
+  overflow-y: auto;
 
 
 }
@@ -5551,6 +5655,12 @@ input, textarea {
   width: 90%;
 
 
+  max-height: 90vh;
+
+
+  overflow-y: auto;
+
+
 }
 
 
@@ -6254,6 +6364,30 @@ input, textarea {
 
 
   margin-top: -6px;
+
+
+  margin-bottom: 2px;
+
+
+  display: block;
+
+
+}
+
+
+.profile-zip-name {
+
+
+  font-size: 10px;
+
+
+  color: var(--wa-text-secondary);
+
+
+  opacity: 0.7;
+
+
+  margin-top: 0;
 
 
   margin-bottom: 4px;
@@ -8801,6 +8935,58 @@ input, textarea {
 
   box-shadow: 0 0 0 3px #25d366 !important;
   background-color: rgba(37, 211, 102, 0.15) !important;
+
+}
+
+.message.sticker-message.search-match {
+
+  background: transparent !important;
+
+  box-shadow: none !important;
+
+  padding: 0 !important;
+
+  outline: 2px solid var(--wa-teal);
+
+  outline-offset: 3px;
+
+}
+
+.message.sticker-message.search-match::before {
+
+  display: none;
+
+}
+
+.message.sticker-message.sent.jumped {
+
+  animation: sticker-pulse-sent 1.8s ease !important;
+
+}
+
+.message.sticker-message.received.jumped {
+
+  animation: sticker-pulse-received 1.8s ease !important;
+
+}
+
+@keyframes sticker-pulse-sent {
+
+  0%   { outline: 3px solid var(--wa-teal); outline-offset: 2px; }
+
+  40%  { outline: 4px solid var(--wa-teal); outline-offset: 4px; }
+
+  100% { outline: 3px solid transparent; outline-offset: 2px; }
+
+}
+
+@keyframes sticker-pulse-received {
+
+  0%   { outline: 3px solid var(--wa-teal); outline-offset: 2px; }
+
+  40%  { outline: 4px solid var(--wa-teal); outline-offset: 4px; }
+
+  100% { outline: 3px solid transparent; outline-offset: 2px; }
 
 }
 

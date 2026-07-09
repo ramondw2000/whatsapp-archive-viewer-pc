@@ -19,6 +19,7 @@ import { type Message, type SearchFilters, type ChatMeta, type ChatData, type Se
 import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
 import { createRenderMessageText, highlightText } from "./utils/textRendering";
+import { stripChatPrefix } from "./utils/stripChatPrefix";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { JumpButton } from "./components/JumpButton";
 import { LinkConfirmModal } from "./components/LinkConfirmModal";
@@ -2132,6 +2133,8 @@ function App() {
 
   const [isSearchingChats, setIsSearchingChats] = useState(false);
 
+  const [chatTypeFilter, setChatTypeFilter] = useState<"all" | "chats" | "groups">("all");
+
 
   // Message search state
 
@@ -2178,6 +2181,9 @@ function App() {
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
 
 
+  const [showResultsList, setShowResultsList] = useState(false);
+
+
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({
 
 
@@ -2210,6 +2216,10 @@ function App() {
       setTimeout(() => {
         virtualListRef.current?.scrollToIndex(jumpedIndex);
       }, 100);
+      // Retry after a longer delay in case the chunk for this index is still loading
+      setTimeout(() => {
+        virtualListRef.current?.scrollToIndex(jumpedIndex);
+      }, 400);
     }
   }, [jumpedIndex]);
 
@@ -2544,7 +2554,7 @@ function App() {
 
         setPendingBackground(path);
 
-        // Load custom background as base64 data URL for preview
+        // Load as base64 for reliable preview in both dev and installed app
 
         try {
 
@@ -2552,9 +2562,7 @@ function App() {
 
           setPendingBackgroundSrc(dataUrl);
 
-        } catch (e) {
-
-          console.error("Failed to load background preview:", e);
+        } catch {
 
           setPendingBackgroundSrc(null);
 
@@ -2616,9 +2624,6 @@ function App() {
     const backgroundToSave = pendingBackground === "" ? null : pendingBackground;
 
 
-    setChatBackground(backgroundToSave);
-
-
     if (backgroundToSave === null) {
 
 
@@ -2643,7 +2648,18 @@ function App() {
     }
 
 
-    localStorage.setItem("whatsapp_chat_background", backgroundToSave);
+    // For custom backgrounds, persist the data URL so it works in the installed app
+
+    const backgroundValueToStore = (!backgroundToSave.startsWith("/app_backgrounds/") && pendingBackgroundSrc)
+
+      ? pendingBackgroundSrc
+
+      : backgroundToSave;
+
+
+    setChatBackground(backgroundValueToStore);
+
+    localStorage.setItem("whatsapp_chat_background", backgroundValueToStore);
 
 
     const isDefaultBackground = backgroundToSave.startsWith("/app_backgrounds/");
@@ -2652,13 +2668,13 @@ function App() {
     if (!isDefaultBackground) {
 
 
-      const newEntry: BackgroundHistoryEntry = { id: Date.now(), background_path: backgroundToSave, changed_at: new Date().toISOString() };
+      const newEntry: BackgroundHistoryEntry = { id: Date.now(), background_path: backgroundValueToStore, changed_at: new Date().toISOString() };
 
 
       setBackgroundHistory(prev => {
 
 
-        const existingIndex = prev.findIndex(entry => entry.background_path === backgroundToSave);
+        const existingIndex = prev.findIndex(entry => entry.background_path === backgroundValueToStore);
 
 
         let updated: BackgroundHistoryEntry[];
@@ -2902,6 +2918,11 @@ function App() {
 
 
       loadChatList();
+
+
+      // Refresh name history so the dialog live-updates
+
+      if (selectedChat) loadNameHistory(selectedChat);
 
 
     } catch (err) {
@@ -3593,7 +3614,16 @@ function App() {
           const chatName = thisChat?.name || chatId;
 
 
-          const saveKey = `chat_modifications_${chatName}`;
+          // Look up old chatId from mapping (for reimport scenario)
+
+
+          const mappingKey = `chat_id_mapping_${chatName}`;
+
+
+          const oldChatId = localStorage.getItem(mappingKey);
+
+
+          const saveKey = oldChatId ? `chat_modifications_${oldChatId}` : `chat_modifications_${chatId}`;
 
 
           const savedModifications = localStorage.getItem(saveKey);
@@ -3618,6 +3648,27 @@ function App() {
 
 
               await invoke("clear_modification_flags", { chatId });
+
+
+              // Update mapping to new chatId
+
+
+              localStorage.setItem(mappingKey, chatId);
+
+
+              // Move modifications to new key if chatId changed
+
+
+              if (oldChatId && oldChatId !== chatId) {
+
+
+                localStorage.removeItem(`chat_modifications_${oldChatId}`);
+
+
+                localStorage.setItem(`chat_modifications_${chatId}`, savedModifications);
+
+
+              }
 
 
             } catch (err) {
@@ -3962,7 +4013,7 @@ function App() {
           if (modifications === "[]") continue;
 
 
-          const saveKey = `chat_modifications_${chat.name}`;
+          const saveKey = `chat_modifications_${chat.id}`;
 
 
           const existingMods = localStorage.getItem(saveKey);
@@ -4097,7 +4148,13 @@ function App() {
       const modifications: string = await invoke("export_chat_modifications", { chatId });
 
 
-      const hasChanges = modifications !== "[]";
+      const saveKey = `chat_modifications_${chatId}`;
+
+
+      const hasLocalStorageMods = localStorage.getItem(saveKey) !== null;
+
+
+      const hasChanges = modifications !== "[]" || hasLocalStorageMods;
 
 
       setDeleteDialog({ chatId, chatName, hasChanges });
@@ -4142,7 +4199,34 @@ function App() {
       });
 
 
-      if (modifications === "[]") {
+      // Save modifications to localStorage for later re-application
+
+
+      // Use chatId as key for stability (chatName can vary)
+
+
+      const saveKey = `chat_modifications_${deleteDialog.chatId}`;
+
+
+      // Store mapping from chatName to chatId for reimport lookup
+
+
+      const mappingKey = `chat_id_mapping_${deleteDialog.chatName}`;
+
+
+      localStorage.setItem(mappingKey, deleteDialog.chatId);
+
+
+      // Merge with existing modifications (don't overwrite)
+
+
+      const existingMods = localStorage.getItem(saveKey);
+
+
+      // If DB has no changes but localStorage does, just use localStorage content
+
+
+      if (modifications === "[]" && !existingMods) {
 
 
         showToast("No changes to save for this chat.");
@@ -4157,22 +4241,7 @@ function App() {
       }
 
 
-      // Save modifications to localStorage for later re-application
-
-
-      // Use chat name as stable key (chatId is random on each import)
-
-
-      const saveKey = `chat_modifications_${deleteDialog.chatName}`;
-
-
-      // Merge with existing modifications (don't overwrite)
-
-
-      const existingMods = localStorage.getItem(saveKey);
-
-
-      let allModifications: any[] = JSON.parse(modifications);
+      let allModifications: any[] = modifications === "[]" ? [] : JSON.parse(modifications);
 
 
       if (existingMods) {
@@ -4313,10 +4382,19 @@ function App() {
       // Clear any saved modifications from localStorage
 
 
-      const saveKey = `chat_modifications_${deleteDialog.chatName}`;
+      const saveKey = `chat_modifications_${deleteDialog.chatId}`;
 
 
       localStorage.removeItem(saveKey);
+
+
+      // Also remove the mapping entry
+
+
+      const mappingKey = `chat_id_mapping_${deleteDialog.chatName}`;
+
+
+      localStorage.removeItem(mappingKey);
 
 
       if (selectedChat === deleteDialog.chatId) {
@@ -4456,6 +4534,7 @@ function App() {
 
         if (seenIndices.has(idx)) return;
 
+        if (msg.type === "system") return;
 
         if (formatDate(msg.timestamp).toLowerCase().includes(q)) {
 
@@ -4627,6 +4706,7 @@ function App() {
 
           if (seenIndices.has(idx)) return;
 
+          if (msg.type === "system") return;
 
           if (formatDate(msg.timestamp).toLowerCase().includes(q)) {
 
@@ -4726,6 +4806,10 @@ function App() {
 
     // Disable followOutput to prevent auto-scroll to bottom
     setFollowOutput(false);
+
+
+    // Scroll immediately (handles case where jumpedIndex didn't change, so useEffect won't re-fire)
+    scrollToResult(index);
 
 
     // Re-enable followOutput after a short delay
@@ -6079,7 +6163,7 @@ useEffect(() => {
         <GroupParticipantsDialog
 
 
-          chatName={selectedChatData.name}
+          chatName={stripChatPrefix(selectedChatData.name)}
 
 
           participants={[
@@ -6133,10 +6217,13 @@ useEffect(() => {
         <ProfileDialog
 
 
-          chatName={selectedChatData?.name || "Chat"}
+          chatName={stripChatPrefix(selectedChatData?.name || "Chat")}
 
 
-          originalName={chats.find(c => c.id === selectedChat)?.name ?? ""}
+          originalName={stripChatPrefix(profile?.original_name ?? selectedChatData?.name ?? "")}
+
+
+          zipName={profile?.original_name ?? selectedChatData?.name ?? ""}
 
 
           profileName={editingProfileName}
@@ -6328,7 +6415,7 @@ useEffect(() => {
                       }
 
 
-                      return p && p.startsWith("/app_backgrounds/") ? p : p ? convertFileSrc(p) : "";
+                      return p && (p.startsWith("/app_backgrounds/") || p.startsWith("data:")) ? p : p ? convertFileSrc(p) : "";
 
 
                     })()}
@@ -6562,7 +6649,7 @@ useEffect(() => {
                             <img
 
 
-                              src={entry.background_path.startsWith("/") ? entry.background_path : convertFileSrc(entry.background_path)}
+                              src={entry.background_path.startsWith("/") || entry.background_path.startsWith("data:") ? entry.background_path : convertFileSrc(entry.background_path)}
 
 
                               alt="Background"
@@ -7214,10 +7301,30 @@ useEffect(() => {
         </div>
 
 
+        <div className="chat-type-filter">
+          <button
+            className={`chat-filter-btn${chatTypeFilter === "all" ? " active" : ""}`}
+            onClick={() => setChatTypeFilter("all")}
+          >All</button>
+          <button
+            className={`chat-filter-btn${chatTypeFilter === "chats" ? " active" : ""}`}
+            onClick={() => setChatTypeFilter("chats")}
+          >Chats</button>
+          <button
+            className={`chat-filter-btn${chatTypeFilter === "groups" ? " active" : ""}`}
+            onClick={() => setChatTypeFilter("groups")}
+          >Groups</button>
+        </div>
+
+
         <div className="chat-list">
 
 
-          {(isSearchingChats ? chatSearchResults : chats).length === 0 ? (
+          {(() => {
+            const baseList = isSearchingChats ? chatSearchResults : chats;
+            const filteredList = chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
+            return filteredList;
+          })().length === 0 ? (
 
 
             <div className="empty-state">
@@ -7235,7 +7342,10 @@ useEffect(() => {
           ) : (
 
 
-            (isSearchingChats ? chatSearchResults : chats).map(chat => (
+            (() => {
+              const baseList = isSearchingChats ? chatSearchResults : chats;
+              return chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
+            })().map(chat => (
 
 
               <div
@@ -7298,7 +7408,7 @@ useEffect(() => {
                   <div className="chat-avatar">
 
 
-                    {getInitials(chat.name)}
+                    {getInitials(stripChatPrefix(chat.name))}
 
 
                   </div>
@@ -7313,7 +7423,7 @@ useEffect(() => {
                   <div className="chat-row">
 
 
-                    <span className="chat-name">{chat.name}</span>
+                    <span className="chat-name">{stripChatPrefix(chat.name)}</span>
 
 
                     {chat.is_group && <span className="group-badge">Group</span>}
@@ -7458,7 +7568,7 @@ useEffect(() => {
                     <div className="chat-avatar large">
 
 
-                      {getInitials(selectedChatData?.name || "Chat")}
+                      {getInitials(selectedChatData ? stripChatPrefix(selectedChatData.name) : "Chat")}
 
 
                     </div>
@@ -7473,7 +7583,7 @@ useEffect(() => {
                 <div className="chat-header-info">
 
 
-                  <h3>{selectedChatData?.name}</h3>
+                  <h3>{selectedChatData ? stripChatPrefix(selectedChatData.name) : ""}</h3>
 
 
                   <span>{selectedChatData?.is_group ? "Group" : "Personal"}</span>
@@ -7637,7 +7747,7 @@ useEffect(() => {
                 className="search-btn"
 
 
-                onClick={() => { setShowMessageSearch(v => !v); setShowMediaGallery(false); setShowFavorites(false); setShowProfileDialog(false); setShowGroupDialog(false); }}
+                onClick={() => { const opening = !showMessageSearch; setShowMessageSearch(v => !v); setShowMediaGallery(false); setShowFavorites(false); setShowProfileDialog(false); setShowGroupDialog(false); if (opening && messageSearchQuery.trim()) { setTimeout(() => handleMessageSearch(), 0); } }}
 
 
                 title="Search messages"
@@ -7996,6 +8106,9 @@ useEffect(() => {
                     setShowAdvancedSearch(false);
 
 
+                    setShowResultsList(false);
+
+
                   }}>✕</button>
 
 
@@ -8191,73 +8304,106 @@ useEffect(() => {
                     </div>
 
 
-                  </div>
+                    {messageSearchResults.length > 0 && (
 
 
-                )}
+                      <div className="filter-show-results">
 
 
-                {messageSearchResults.length > 0 && (
+                        <label className="filter-show-results-label">
 
 
-                  <div className="search-results">
+                          <input
 
 
-                    <div className="search-count">{messageSearchResults.length} result{messageSearchResults.length !== 1 ? 's' : ''} found</div>
+                            type="checkbox"
 
 
-                    {messageSearchResults.map((result, pos) => (
+                            checked={showResultsList}
 
 
-                      <div
+                            onChange={(e) => setShowResultsList(e.target.checked)}
 
 
-                        key={result.message_index}
+                          />
 
 
-                        className={`search-result-item${pos === searchResultCursor ? ' active' : ''}`}
+                          Show results list
 
 
-                        onClick={() => jumpToMessage(result.message_index)}
+                        </label>
 
 
-                      >
+                        {showResultsList && (
 
 
-                        <div className="search-result-header">
+                          <div className="search-results">
 
 
-                          <span className="search-result-sender">{result.sender}</span>
+                            {messageSearchResults.map((result, pos) => (
 
 
-                          <span className="search-result-time">{formatDate(result.timestamp)} {formatTime(result.timestamp)}</span>
+                              <div
 
 
-                        </div>
+                                key={result.message_index}
 
 
-                        <div className="search-result-content">
+                                className={`search-result-item${pos === searchResultCursor ? ' active' : ''}`}
 
 
-                          {highlightText(
+                                onClick={() => jumpToMessage(result.message_index)}
 
 
-                            result.content.slice(0, 100) + (result.content.length > 100 ? "..." : ""),
+                              >
 
 
-                            messageSearchQuery
+                                <div className="search-result-header">
 
 
-                          )}
+                                  <span className="search-result-sender">{result.sender}</span>
 
 
-                        </div>
+                                  <span className="search-result-time">{formatDate(result.timestamp)} {formatTime(result.timestamp)}</span>
+
+
+                                </div>
+
+
+                                <div className="search-result-content">
+
+
+                                  {highlightText(
+
+
+                                    result.content.slice(0, 100) + (result.content.length > 100 ? "..." : ""),
+
+
+                                    messageSearchQuery
+
+
+                                  )}
+
+
+                                </div>
+
+
+                              </div>
+
+
+                            ))}
+
+
+                          </div>
+
+
+                        )}
 
 
                       </div>
 
 
-                    ))}
+                    )}
 
 
                   </div>
@@ -8266,7 +8412,7 @@ useEffect(() => {
                 )}
 
 
-                {messageSearchQuery && messageSearchResults.length === 0 && (
+                {!showAdvancedSearch && messageSearchQuery && messageSearchResults.length === 0 && (
 
 
                   <div className="search-no-results">No messages found</div>
@@ -8332,7 +8478,7 @@ useEffect(() => {
             <>
 
 
-            <div className={`messages-container${chatBackground ? " messages-container--has-bg" : ""}`} style={showMediaGallery || showFavorites ? { display: "none" } : chatBackground ? { backgroundImage: `url('${chatBackground.startsWith("/app_backgrounds/") ? chatBackground : convertFileSrc(chatBackground)}')`, backgroundSize: "cover", backgroundPosition: "center" } : {}} ref={messagesContainerRef}>
+            <div className={`messages-container${chatBackground ? " messages-container--has-bg" : ""}`} style={showMediaGallery || showFavorites ? { display: "none" } : chatBackground ? { backgroundImage: `url('${chatBackground.startsWith("data:") || chatBackground.startsWith("/app_backgrounds/") ? chatBackground : convertFileSrc(chatBackground)}')`, backgroundSize: "cover", backgroundPosition: "center" } : {}} ref={messagesContainerRef}>
 
 
               {loading ? (
@@ -8440,7 +8586,16 @@ useEffect(() => {
                         {isSystem ? (
 
 
-                          <div className="system-message">{msg.content}</div>
+                          <div
+
+
+                            ref={(el) => { messageRefs.current[idx] = el; }}
+
+
+                            className={`system-message${highlightedIndices.has(idx) ? ' search-match' : ''}${jumpedIndex === idx ? ' jumped' : ''}`}
+
+
+                          >{msg.content}</div>
 
 
                         ) : (

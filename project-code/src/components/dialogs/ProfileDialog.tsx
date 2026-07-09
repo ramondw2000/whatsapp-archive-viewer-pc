@@ -6,6 +6,7 @@ import type { NameHistoryEntry } from "../../types";
 interface ProfileDialogProps {
   chatName: string;
   originalName: string;
+  zipName: string;
   profileName: string;
   profileNotes: string;
   profilePhone: string;
@@ -26,6 +27,7 @@ interface ProfileDialogProps {
 export function ProfileDialog({
   chatName,
   originalName,
+  zipName,
   profileName,
   profileNotes,
   profilePhone,
@@ -139,6 +141,9 @@ export function ProfileDialog({
                 </button>
               </div>
               <span className="profile-original-name">Original: {originalName}</span>
+              {zipName && zipName !== originalName && (
+                <span className="profile-zip-name">Source file: {zipName}</span>
+              )}
             </>
           ) : (
             <div className="profile-view-field">
