@@ -2113,7 +2113,7 @@ function App() {
   // Scroll detection state
 
 
-  const [_chatScrollState, setChatScrollState] = useState<{ atTop: boolean; atBottom: boolean; hasOverflow: boolean }>({ atTop: true, atBottom: true, hasOverflow: false });
+  const [visibleRange, setVisibleRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
 
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -2146,6 +2146,8 @@ function App() {
 
 
   const [showMessageSearch, setShowMessageSearch] = useState(false);
+
+  const [hasSearched, setHasSearched] = useState(false);
 
 
   const [highlightedIndices, setHighlightedIndices] = useState<Set<number>>(new Set());
@@ -3112,88 +3114,7 @@ function App() {
   }, [messages]);
 
 
-  // Scroll detection for chat messages
-
-
-  useEffect(() => {
-
-
-    const container = messagesContainerRef.current;
-
-
-    if (!container) return;
-
-
-    const updateScrollState = () => {
-
-
-      const { scrollTop, scrollHeight, clientHeight } = container;
-
-
-      const atTop = scrollTop <= 10;
-
-
-      const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
-
-
-      const hasOverflow = scrollHeight > clientHeight;
-
-
-      setChatScrollState({ atTop, atBottom, hasOverflow });
-
-
-    };
-
-
-    let rafId: number | null = null;
-
-
-    const throttledUpdate = () => {
-
-
-      if (rafId !== null) return;
-
-
-      rafId = requestAnimationFrame(() => {
-
-
-        rafId = null;
-
-
-        updateScrollState();
-
-
-      });
-
-
-    };
-
-
-    updateScrollState();
-
-
-    container.addEventListener('scroll', throttledUpdate, { passive: true });
-
-
-    window.addEventListener('resize', updateScrollState);
-
-
-    return () => {
-
-
-      if (rafId !== null) cancelAnimationFrame(rafId);
-
-
-      container.removeEventListener('scroll', throttledUpdate);
-
-
-      window.removeEventListener('resize', updateScrollState);
-
-
-    };
-
-
-  }, [messages, selectedChat]);
+  // Scroll detection for chat messages - handled by VirtualMessageList's onScrollStateChange
 
 
   // Jump functions
@@ -4502,6 +4423,9 @@ function App() {
     if (!selectedChat || !messageSearchQuery.trim()) return;
 
 
+    setHasSearched(true);
+
+
     try {
 
 
@@ -4630,6 +4554,9 @@ function App() {
 
 
     setSearchResultCursor(0);
+
+
+    setHasSearched(false);
 
 
   }
@@ -8079,6 +8006,9 @@ useEffect(() => {
                     setMessageSearchQuery("");
 
 
+                    setHasSearched(false);
+
+
                     setSearchFilters({
 
 
@@ -8412,7 +8342,7 @@ useEffect(() => {
                 )}
 
 
-                {!showAdvancedSearch && messageSearchQuery && messageSearchResults.length === 0 && (
+                {!showAdvancedSearch && messageSearchQuery && messageSearchResults.length === 0 && hasSearched && (
 
 
                   <div className="search-no-results">No messages found</div>
@@ -8521,6 +8451,9 @@ useEffect(() => {
 
 
                     followOutput={followOutput}
+
+
+                    onRangeChange={setVisibleRange}
 
 
                     renderMessage={(_msg, idx) => {
@@ -9503,7 +9436,7 @@ useEffect(() => {
                   onClick={scrollToChatTop}
 
 
-                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch}
+                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && visibleRange !== null && visibleRange.startIndex > 0}
 
 
                 />
@@ -9518,7 +9451,7 @@ useEffect(() => {
                   onClick={scrollToChatBottom}
 
 
-                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch}
+                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && visibleRange !== null && visibleRange.endIndex < messages.length - 1}
 
 
                 />

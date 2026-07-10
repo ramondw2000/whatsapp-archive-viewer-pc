@@ -147,10 +147,19 @@ fn validate_chat_id(id: &str) -> Result<(), String> {
 /// Extension allowlist — only permit known-safe media types through open_path.
 fn is_safe_open_extension(ext: &str) -> bool {
     matches!(ext,
+        // Images
         "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "tiff" | "tif" | "avif" |
+        // Videos
         "mp4" | "mkv" | "mov" | "avi" | "webm" | "m4v" | "3gp" |
+        // Audio
         "mp3" | "m4a" | "aac" | "ogg" | "opus" | "flac" | "wav" |
-        "pdf" | "vcf" | "ico"
+        // Documents
+        "pdf" | "vcf" | "ico" | "txt" | "csv" | "json" | "xml" | "html" | "htm" |
+        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "odt" | "ods" | "odp" |
+        // Archives
+        "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" |
+        // Other common
+        "rtf" | "md" | "log"
     )
 }
 

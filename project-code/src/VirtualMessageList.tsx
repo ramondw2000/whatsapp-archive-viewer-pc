@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 
 interface Message {
@@ -9,6 +9,7 @@ interface VirtualMessageListProps {
   messages: Message[];
   renderMessage: (msg: Message, index: number) => React.ReactNode;
   followOutput?: boolean | 'auto' | 'smooth';
+  onScrollStateChange?: (state: { atTop: boolean; atBottom: boolean }) => void;
 }
 
 export interface VirtualMessageListRef {
@@ -16,15 +17,19 @@ export interface VirtualMessageListRef {
   scrollToBottom: () => void;
   scrollToIndex: (index: number, offset?: number) => void;
   adjustScrollBy: (pixels: number) => void;
+  getScroller: () => HTMLElement | null;
 }
 
 export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessageListProps>(function VirtualMessageList({
   messages,
   renderMessage,
-  followOutput = 'smooth'
+  followOutput = 'smooth',
+  onScrollStateChange
 }, ref) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
 
   useImperativeHandle(ref, () => ({
     scrollToTop: () => {
@@ -41,7 +46,15 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
         scrollerRef.current.scrollTop += pixels;
       }
     },
+    getScroller: () => scrollerRef.current,
   }));
+
+  // Notify parent of scroll state changes
+  React.useEffect(() => {
+    if (onScrollStateChange) {
+      onScrollStateChange({ atTop, atBottom });
+    }
+  }, [atTop, atBottom, onScrollStateChange]);
 
   return (
     <Virtuoso
@@ -54,6 +67,13 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
       initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
       overscan={800}
       increaseViewportBy={{ top: 400, bottom: 400 }}
+      atTopState={atTop}
+      atTopThreshold={50}
+      atBottomState={atBottom}
+      atBottomThreshold={50}
+      components={{
+        ScrollSeekPlaceholder: () => <div style={{ height: '100%' }} />
+      }}
     />
   );
 });
