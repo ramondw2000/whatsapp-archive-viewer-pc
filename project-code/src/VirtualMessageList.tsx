@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 
 interface Message {
@@ -28,7 +28,7 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
 }, ref) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
-  const [atTop, setAtTop] = useState(true);
+  const [atTop, setAtTop] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
 
   useImperativeHandle(ref, () => ({
@@ -50,7 +50,7 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
   }));
 
   // Notify parent of scroll state changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (onScrollStateChange) {
       onScrollStateChange({ atTop, atBottom });
     }
@@ -67,13 +67,8 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
       initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
       overscan={800}
       increaseViewportBy={{ top: 400, bottom: 400 }}
-      atTopState={atTop}
-      atTopThreshold={50}
-      atBottomState={atBottom}
-      atBottomThreshold={50}
-      components={{
-        ScrollSeekPlaceholder: () => <div style={{ height: '100%' }} />
-      }}
+      atTopStateChange={setAtTop}
+      atBottomStateChange={setAtBottom}
     />
   );
 });

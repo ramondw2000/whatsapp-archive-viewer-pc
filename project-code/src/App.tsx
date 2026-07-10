@@ -2113,7 +2113,7 @@ function App() {
   // Scroll detection state
 
 
-  const [visibleRange, setVisibleRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
+  const [chatScrollState, setChatScrollState] = useState<{ atTop: boolean; atBottom: boolean }>({ atTop: false, atBottom: true });
 
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -8453,7 +8453,7 @@ useEffect(() => {
                     followOutput={followOutput}
 
 
-                    onRangeChange={setVisibleRange}
+                    onScrollStateChange={setChatScrollState}
 
 
                     renderMessage={(_msg, idx) => {
@@ -9436,7 +9436,7 @@ useEffect(() => {
                   onClick={scrollToChatTop}
 
 
-                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && visibleRange !== null && visibleRange.startIndex > 0}
+                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && !chatScrollState.atTop}
 
 
                 />
@@ -9451,7 +9451,7 @@ useEffect(() => {
                   onClick={scrollToChatBottom}
 
 
-                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && visibleRange !== null && visibleRange.endIndex < messages.length - 1}
+                  visible={messages.length > 10 && !showFavorites && !showMediaGallery && !showMessageSearch && !chatScrollState.atBottom}
 
 
                 />
