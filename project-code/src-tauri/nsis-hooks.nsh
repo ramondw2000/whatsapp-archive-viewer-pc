@@ -24,6 +24,9 @@
   ${If} $1 == 1
     DetailPrint "Visual C++ Redistributable already installed, skipping."
   ${Else}
+    ; Ask the user before installing
+    MessageBox MB_YESNO "WhatsApp Archive Viewer (PC) requires the Microsoft Visual C++ Redistributable, which is not currently installed.$\r$\n$\r$\nInstall it now?" IDNO skip_vcredist_install
+
     ; Run the real installer UI (no /quiet) so the user gets a genuine progress bar + Cancel button
     ExecWait '"$INSTDIR\vc_redist.x64.exe" /norestart' $2
 
@@ -34,6 +37,12 @@
       ExecWait '"$INSTDIR\uninstall.exe" /S'
       Quit
     ${EndIf}
+    Goto vcredist_done
+
+    skip_vcredist_install:
+    MessageBox MB_ICONEXCLAMATION|MB_OK "WhatsApp Archive Viewer (PC) may not run correctly without the Visual C++ Redistributable.$\r$\nYou can install it later by re-running this installer."
+
+    vcredist_done:
   ${EndIf}
 !macroend
 
