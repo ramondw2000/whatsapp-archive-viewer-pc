@@ -53,4 +53,11 @@
   ; Clean up Start Menu folder
   Delete "$SMPROGRAMS\WhatsApp Archive Viewer (PC)\WhatsApp Archive Viewer (PC).lnk"
   RMDir "$SMPROGRAMS\WhatsApp Archive Viewer (PC)"
+
+  ; The app stores its data under %APPDATA%\WhatsAppArchiveViewer, not under
+  ; the Tauri bundle identifier folder the built-in "Delete app data" logic
+  ; targets — remove it here when the user opted in.
+  ${If} $DeleteAppDataCheckboxState == 1
+    RmDir /r "$APPDATA\WhatsAppArchiveViewer"
+  ${EndIf}
 !macroend
