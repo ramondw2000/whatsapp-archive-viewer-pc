@@ -42,6 +42,7 @@ checklists was cross-checked against the actual code and found implemented.
   including one real risk (`unwrap()` after an `is_some()` check that could be an `if let` instead);
   line numbers from that report are stale after this session's changes, so re-run rather than trusting
   old references.
+- ~~Excessive blank lines throughout lib.rs/App.tsx~~ and ~~dead code~~ — done, see below.
 
 ## Recently completed (2026-07-15)
 
@@ -62,6 +63,14 @@ checklists was cross-checked against the actual code and found implemented.
   gets to system-message detection, so the fix lives there, not in the `is_system` check). Tagalog was
   missing a "third-person added" pattern. Both confirmed against the real Android string resources and
   covered by regression tests.
+- Removed ~9,800 unnecessary blank lines from `lib.rs` and `App.tsx` — a mechanical artifact (one blank
+  line after nearly every Rust statement, two after nearly every TSX line/import), not intentional
+  style; genuine section-boundary spacing was preserved. Removed 12 dead Tauri commands with zero
+  frontend references (`pick_zip_file`, `import_chat`, `import_chats_batch`, `get_contact_profile`,
+  `open_url`, `check_file_exists`, `debug_chat_media`, `set_chat_background`, `get_chat_background`,
+  `get_background_history`, `restore_chat_background`, `clear_chat_background`) plus their
+  `invoke_handler` registrations, and one unused import in `unit_tests.rs`. All 193 backend + 149
+  frontend tests and typecheck pass clean.
 
 ## Known design limitations (accepted, not bugs)
 

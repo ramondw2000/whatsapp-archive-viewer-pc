@@ -1,6 +1,5 @@
 /// Unit tests for the WhatsApp Archive Viewer Rust backend.
 /// Tests are for pure/helper functions that don't require Tauri app state.
-use whatsapp_archive_viewer_pc_lib::*;
 
 // ============================================================================
 // NOTE: The functions under test (sanitize_filename, validate_chat_id, etc.)
