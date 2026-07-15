@@ -1879,44 +1879,47 @@ function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
   const [updateMessage, setUpdateMessage] = useState<{ title: string; message: string } | null>(null);
 
-  const handleCheckUpdates = async () => {
+  // silent=true (startup auto-check): only ever surfaces an actual available update via
+  // updateInfo; never pops up "Up to Date" / error modals so a normal launch stays quiet.
+  const checkForUpdates = async (silent: boolean) => {
     setIsCheckingUpdates(true);
-    setUpdateInfo(null);
+    if (!silent) setUpdateInfo(null);
 
     try {
-      // Replace with your actual GitHub repo
       const repoOwner = "ramondw2000";
       const repoName = "whatsapp-archive-viewer-pc";
       const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/releases`;
-      console.log("Fetching from:", apiUrl);
       const response = await fetch(apiUrl, {
         headers: {
           "Accept": "application/vnd.github.v3+json"
         }
       });
-      console.log("GitHub API response status:", response.status, response.statusText);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("GitHub API error:", errorText);
-        setUpdateMessage({
-          title: "No Releases",
-          message: `API Error ${response.status}: ${response.statusText}. This feature will be available once releases are published.`
-        });
+        if (!silent) {
+          const errorText = await response.text();
+          console.error("GitHub API error:", errorText);
+          setUpdateMessage({
+            title: "No Releases",
+            message: `API Error ${response.status}: ${response.statusText}. This feature will be available once releases are published.`
+          });
+        }
         return;
       }
 
       const releases = await response.json();
       if (!releases || releases.length === 0) {
-        setUpdateMessage({
-          title: "No Releases",
-          message: "No releases found. This feature will be available once releases are published."
-        });
+        if (!silent) {
+          setUpdateMessage({
+            title: "No Releases",
+            message: "No releases found. This feature will be available once releases are published."
+          });
+        }
         return;
       }
 
       const data = releases[0]; // Get the most recent release (including prereleases)
-      const latestVersion = data.tag_name.replace("v", "");
+      const latestVersion = data.tag_name.replace(/^v/, "");
       const currentVersion = __APP_VERSION__;
 
       if (latestVersion !== currentVersion) {
@@ -1924,7 +1927,7 @@ function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
           version: latestVersion,
           url: data.html_url
         });
-      } else {
+      } else if (!silent) {
         setUpdateMessage({
           title: "Up to Date",
           message: "You're already on the latest version"
@@ -1932,14 +1935,25 @@ function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
       }
     } catch (error) {
       console.error("Update check error:", error);
-      setUpdateMessage({
-        title: "Update Check Failed",
-        message: `Error: ${error instanceof Error ? error.message : String(error)}`
-      });
+      if (!silent) {
+        setUpdateMessage({
+          title: "Update Check Failed",
+          message: `Error: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
     } finally {
       setIsCheckingUpdates(false);
     }
   };
+
+  const handleCheckUpdates = () => checkForUpdates(false);
+
+  // Auto-check once per app launch — StartScreen mounts on every launch (before the user
+  // clicks into their chats), so this covers returning users too, not just first-run.
+  useEffect(() => {
+    checkForUpdates(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
