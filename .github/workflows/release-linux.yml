@@ -40,5 +40,7 @@ jobs:
         with:
           projectPath: project-code
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'WhatsApp Archive Viewer (PC) ${{ github.event.inputs.tag || github.ref_name }}'
+          releaseBody: 'See the Windows release notes for full details — this run only attaches the Linux build to the same tag.'
           releaseDraft: true
           includeUpdaterJson: false
