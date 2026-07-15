@@ -15,7 +15,7 @@ import { LazyMediaImage, useLazyVisibility, setMediaFallback, setToastCallback, 
 import { VirtualMessageList, VirtualMessageListRef } from "./VirtualMessageList";
 
 
-import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
+import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, type Contact, type AutoLinkEvent, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
 import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
 import { createRenderMessageText, highlightText } from "./utils/textRendering";
@@ -31,6 +31,7 @@ import { DeleteSuccessDialog } from "./components/dialogs/DeleteSuccessDialog";
 import { UsernameDialog } from "./components/dialogs/UsernameDialog";
 import { GroupParticipantsDialog } from "./components/dialogs/GroupParticipantsDialog";
 import { ProfileDialog } from "./components/dialogs/ProfileDialog";
+import { AutoLinkReviewDialog } from "./components/dialogs/AutoLinkReviewDialog";
 import { GroupAvatar } from "./components/GroupAvatar";
 import { ProfileImage } from "./components/ProfileImage";
 import { MediaFallback } from "./components/media/MediaFallback";
@@ -2293,6 +2294,26 @@ function App() {
   const [nameHistory, setNameHistory] = useState<NameHistoryEntry[]>([]);
 
 
+  // Groups the *current chat's* linked contact (if any) appears in — shown in that chat's own Profile dialog
+  const [chatContactGroups, setChatContactGroups] = useState<ChatMeta[]>([]);
+
+
+  // Group-participant → shared contact profile editing
+  const [linkedParticipants, setLinkedParticipants] = useState<Set<string>>(new Set());
+  const [formerMembers, setFormerMembers] = useState<Set<string>>(new Set());
+  const [showParticipantDialog, setShowParticipantDialog] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [editingContactName, setEditingContactName] = useState("");
+  const [editingContactNotes, setEditingContactNotes] = useState("");
+  const [editingContactPhone, setEditingContactPhone] = useState("");
+  const [pendingContactPhoto, setPendingContactPhoto] = useState<string | null>(null);
+  const [contactGroups, setContactGroups] = useState<ChatMeta[]>([]);
+  const [contactUnlinkedChats, setContactUnlinkedChats] = useState<ChatMeta[]>([]);
+  const [contactLinkedChat, setContactLinkedChat] = useState<ChatMeta | null>(null);
+  const [pendingAutoLinks, setPendingAutoLinks] = useState<AutoLinkEvent[]>([]);
+  const [showAutoLinkReview, setShowAutoLinkReview] = useState(false);
+
+
   const [chatBackground, setChatBackground] = useState<string | null>(() => {
 
 
@@ -2380,7 +2401,13 @@ function App() {
     });
 
 
-    loadChatList();
+    (async () => {
+      await loadChatList();
+      // Must run after loadChatList (which triggers the first backend call, and with it
+      // init_database()'s startup reconciliation pass) — otherwise this could race ahead and
+      // drain an empty queue before the pass has had a chance to populate it.
+      await checkPendingAutoLinks();
+    })();
 
 
   }, []);
@@ -2500,6 +2527,19 @@ function App() {
 
 
       setEditingProfilePhone(data.phone_number || "");
+
+
+      if (data.contact_id) {
+
+        const groups: ChatMeta[] = await invoke("get_contact_groups", { contactId: data.contact_id });
+
+        if (selectedChatRef.current === chatId) setChatContactGroups(groups);
+
+      } else {
+
+        setChatContactGroups([]);
+
+      }
 
 
     } catch (err) {
@@ -2630,6 +2670,9 @@ function App() {
 
 
       localStorage.removeItem("whatsapp_chat_background");
+
+
+      setChatBackground(null);
 
 
       showToast("Background cleared.");
@@ -2979,6 +3022,214 @@ function App() {
     setPendingProfilePhoto(""); // Empty string indicates photo removal
 
 
+  }
+
+
+  function currentGroupParticipantNames(): string[] {
+    return [...new Set(
+      messages
+        .filter(m => m.type !== "system" && m.sender !== "System")
+        .map(m => m.sender)
+    )];
+  }
+
+  async function refreshLinkedParticipants(names: string[]) {
+    try {
+      const linked: string[] = await invoke("get_linked_participants", { participantNames: names });
+      setLinkedParticipants(new Set(linked));
+    } catch (err) {
+      console.error("Failed to load linked participants:", err);
+    }
+  }
+
+  async function refreshFormerMembers(names: string[]) {
+    if (!selectedChat) return;
+    try {
+      const former: string[] = await invoke("get_former_members", { chatId: selectedChat, participantNames: names });
+      setFormerMembers(new Set(former));
+    } catch (err) {
+      console.error("Failed to load former members:", err);
+    }
+  }
+
+  function refreshParticipantBadges(names: string[]) {
+    refreshLinkedParticipants(names);
+    refreshFormerMembers(names);
+  }
+
+  async function checkPendingAutoLinks() {
+    try {
+      const events: AutoLinkEvent[] = await invoke("take_pending_auto_links");
+      if (events.length > 0) {
+        setPendingAutoLinks(events);
+        setShowAutoLinkReview(true);
+      }
+    } catch (err) {
+      console.error("Failed to check pending auto-links:", err);
+    }
+  }
+
+  async function handleUnlinkAutoLinkedContact(contactId: string) {
+    try {
+      await invoke("unlink_contact_from_chat", { contactId });
+      setPendingAutoLinks(prev => {
+        const next = prev.filter(e => e.contact_id !== contactId);
+        if (next.length === 0) setShowAutoLinkReview(false);
+        return next;
+      });
+      loadChatList();
+      refreshParticipantBadges(currentGroupParticipantNames());
+    } catch (err) {
+      console.error("Failed to unlink:", err);
+      showToast("Failed to unlink: " + err);
+    }
+  }
+
+  async function handleEditParticipant(name: string) {
+    if (!selectedChat) return;
+    try {
+      const contact: Contact = await invoke("get_or_create_contact_for_participant", {
+        participantName: name,
+        groupChatId: selectedChat,
+      });
+      setEditingContact(contact);
+      setEditingContactName(contact.name || "");
+      setEditingContactNotes(contact.notes || "");
+      setEditingContactPhone(contact.phone_number || "");
+      setPendingContactPhoto(null);
+
+      const [groups, unlinked, linkedChat] = await Promise.all([
+        invoke<ChatMeta[]>("get_contact_groups", { contactId: contact.id }),
+        invoke<ChatMeta[]>("get_unlinked_one_on_one_chats"),
+        invoke<ChatMeta | null>("get_linked_chat_for_contact", { contactId: contact.id }),
+      ]);
+      setContactGroups(groups);
+      setContactUnlinkedChats(unlinked);
+      setContactLinkedChat(linkedChat);
+
+      setShowParticipantDialog(true);
+
+      // A shadow contact may have just been created — refresh the linked-status icons
+      refreshParticipantBadges(currentGroupParticipantNames());
+    } catch (err) {
+      console.error("Failed to resolve participant:", err);
+      showToast("Failed to open participant profile: " + err);
+    }
+  }
+
+  async function saveContactProfile() {
+    if (!editingContact) return;
+    try {
+      if (pendingContactPhoto === "") {
+        await invoke("remove_contact_photo", { contactId: editingContact.id });
+      }
+      await invoke("update_contact_profile", {
+        contactId: editingContact.id,
+        name: editingContactName || null,
+        notes: editingContactNotes || null,
+        photoPath: pendingContactPhoto && pendingContactPhoto !== "" ? pendingContactPhoto : null,
+        phoneNumber: editingContactPhone || null,
+      });
+
+      const newPhotoPath = pendingContactPhoto === "" ? null : (pendingContactPhoto ?? editingContact.photo_path ?? null);
+      setEditingContact(prev => prev ? { ...prev, name: editingContactName, notes: editingContactNotes, phone_number: editingContactPhone, photo_path: newPhotoPath } : null);
+      setPendingContactPhoto(null);
+      showToast("Profile saved successfully!");
+
+      // If this contact is linked to the currently open chat, refresh its own profile too
+      if (contactLinkedChat && selectedChat && contactLinkedChat.id === selectedChat) {
+        loadProfile(selectedChat);
+      }
+      loadChatList();
+    } catch (err) {
+      console.error("Failed to save contact profile:", err);
+      showToast("Failed to save profile: " + err);
+    }
+  }
+
+  function handleContactPhotoRemove() {
+    setPendingContactPhoto("");
+  }
+
+  async function handleContactPhotoUpload() {
+    try {
+      const path: string | null = await invoke("pick_profile_photo");
+      if (path) {
+        setPendingContactPhoto(path);
+      }
+    } catch (err) {
+      console.error("Failed to upload photo:", err);
+    }
+  }
+
+  async function handleRemoveContactGroup(chatId: string) {
+    if (!editingContact) return;
+    try {
+      await invoke("remove_contact_group", { contactId: editingContact.id, chatId });
+      setContactGroups(prev => prev.filter(g => g.id !== chatId));
+    } catch (err) {
+      console.error("Failed to remove group:", err);
+      showToast("Failed to remove group: " + err);
+    }
+  }
+
+  async function handleLinkContactToChat(chatId: string) {
+    if (!editingContact) return;
+    try {
+      await invoke("link_contact_to_chat", { contactId: editingContact.id, chatId });
+      const linkedChat = contactUnlinkedChats.find(c => c.id === chatId) || null;
+      setContactLinkedChat(linkedChat);
+      setContactUnlinkedChats(prev => prev.filter(c => c.id !== chatId));
+      showToast("Linked!");
+      if (selectedChat === chatId) loadProfile(selectedChat);
+      loadChatList();
+      refreshParticipantBadges(currentGroupParticipantNames());
+    } catch (err) {
+      console.error("Failed to link contact:", err);
+      showToast("Failed to link: " + err);
+    }
+  }
+
+  async function handleUnlinkContact() {
+    if (!editingContact) return;
+    try {
+      await invoke("unlink_contact_from_chat", { contactId: editingContact.id });
+      const previouslyLinkedChatId = contactLinkedChat?.id;
+      setContactLinkedChat(null);
+      const unlinked: ChatMeta[] = await invoke("get_unlinked_one_on_one_chats");
+      setContactUnlinkedChats(unlinked);
+      showToast("Unlinked");
+      if (previouslyLinkedChatId && selectedChat === previouslyLinkedChatId) loadProfile(selectedChat);
+      loadChatList();
+      refreshParticipantBadges(currentGroupParticipantNames());
+    } catch (err) {
+      console.error("Failed to unlink contact:", err);
+      showToast("Failed to unlink: " + err);
+    }
+  }
+
+  async function handleUnlinkChatContact() {
+    if (!selectedChat || !profile?.contact_id) return;
+    try {
+      await invoke("unlink_contact_from_chat", { contactId: profile.contact_id });
+      showToast("Unlinked");
+      setChatContactGroups([]);
+      loadProfile(selectedChat);
+    } catch (err) {
+      console.error("Failed to unlink:", err);
+      showToast("Failed to unlink: " + err);
+    }
+  }
+
+  async function handleRemoveContactGroupFromChat(chatId: string) {
+    if (!profile?.contact_id) return;
+    try {
+      await invoke("remove_contact_group", { contactId: profile.contact_id, chatId });
+      setChatContactGroups(prev => prev.filter(g => g.id !== chatId));
+    } catch (err) {
+      console.error("Failed to remove group:", err);
+      showToast("Failed to remove group: " + err);
+    }
   }
 
 
@@ -3470,6 +3721,7 @@ function App() {
             setLastLongPressedIndex(null);
           }
           showToast(`Imported ${importedIds.length} chat(s)`);
+          checkPendingAutoLinks();
         } catch (err) {
           showToast("Import failed: " + err);
         } finally {
@@ -3638,6 +3890,7 @@ function App() {
         setLastLongPressedIndex(null);
       }
 
+      checkPendingAutoLinks();
 
     } catch (err) {
 
@@ -3700,6 +3953,7 @@ function App() {
         setLastLongPressedIndex(null);
       }
       setImportProgress({ current: 1, total: 1 });
+      checkPendingAutoLinks();
     } catch (e) {
       console.error("Share import failed:", e);
     } finally {
@@ -4633,7 +4887,20 @@ function App() {
 
           if (seenIndices.has(idx)) return;
 
-          if (msg.type === "system") return;
+          // Respect the active type/sender filters so this date-label fallback can't leak
+          // results of the wrong type back into a filtered search (e.g. a "video" filter
+          // picking up unrelated text messages just because their date label matches).
+          if (searchFilters.msg_type) {
+
+            if (msg.type !== searchFilters.msg_type) return;
+
+          } else if (msg.type === "system") {
+
+            return;
+
+          }
+
+          if (searchFilters.sender && !msg.sender.toLowerCase().includes(searchFilters.sender.toLowerCase())) return;
 
           if (formatDate(msg.timestamp).toLowerCase().includes(q)) {
 
@@ -5754,6 +6021,17 @@ useEffect(() => {
       )}
 
 
+      {showAutoLinkReview && pendingAutoLinks.length > 0 && (
+
+        <AutoLinkReviewDialog
+          events={pendingAutoLinks}
+          onUnlink={handleUnlinkAutoLinkedContact}
+          onClose={() => setShowAutoLinkReview(false)}
+        />
+
+      )}
+
+
       {showStartScreen ? (
 
 
@@ -6132,6 +6410,78 @@ useEffect(() => {
           onSave={saveProfile}
 
 
+          linkedParticipants={linkedParticipants}
+
+
+          formerMembers={formerMembers}
+
+
+          onEditParticipant={handleEditParticipant}
+
+
+        />
+
+
+      )}
+
+
+      {showParticipantDialog && editingContact && (
+
+
+        <ProfileDialog
+
+          chatName={editingContact.name || editingContact.display_key}
+
+          originalName={editingContact.display_key}
+
+          zipName=""
+
+          profileName={editingContactName}
+
+          profileNotes={editingContactNotes}
+
+          profilePhone={editingContactPhone}
+
+          photoPath={pendingContactPhoto ?? editingContact.photo_path}
+
+          nameHistory={[]}
+
+          onNameChange={setEditingContactName}
+
+          onNotesChange={setEditingContactNotes}
+
+          onPhoneChange={setEditingContactPhone}
+
+          onSave={saveContactProfile}
+
+          onCancel={() => { setShowParticipantDialog(false); setEditingContact(null); setPendingContactPhoto(null); }}
+
+          onPhotoUpload={handleContactPhotoUpload}
+
+          onRestoreName={() => {}}
+
+          onResetName={() => setEditingContactName(editingContact.display_key)}
+
+          onPhotoClick={(base64Data) => setChatLightbox({ filename: base64Data, type: "image", sender: "Profile Photo", timestamp: "", index: 0, hideControls: true })}
+
+          onPhotoRemove={handleContactPhotoRemove}
+
+          startInEditMode
+
+          linkedGroups={contactGroups}
+
+          onRemoveGroup={handleRemoveContactGroup}
+
+          contactLinked={!!contactLinkedChat}
+
+          linkedChatName={contactLinkedChat?.name ?? null}
+
+          unlinkedChats={contactUnlinkedChats}
+
+          onLinkToChat={handleLinkContactToChat}
+
+          onUnlink={handleUnlinkContact}
+
         />
 
 
@@ -6196,6 +6546,21 @@ useEffect(() => {
 
 
           onPhotoRemove={handlePhotoRemove}
+
+
+          linkedGroups={profile?.contact_id ? chatContactGroups : undefined}
+
+
+          onRemoveGroup={handleRemoveContactGroupFromChat}
+
+
+          contactLinked={!!profile?.contact_id}
+
+
+          linkedChatName={profile?.contact_id ? "a shared contact" : null}
+
+
+          onUnlink={profile?.contact_id ? handleUnlinkChatContact : undefined}
 
 
         />
@@ -7807,7 +8172,7 @@ useEffect(() => {
                 className="profile-btn"
 
 
-                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } }}
+                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); refreshParticipantBadges(currentGroupParticipantNames()); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } }}
 
 
                 title={selectedChatData?.is_group ? "View participants" : "Edit profile"}
@@ -8160,6 +8525,12 @@ useEffect(() => {
 
 
                           <option value="image">Image</option>
+
+
+                          <option value="gif">GIF</option>
+
+
+                          <option value="sticker">Sticker</option>
 
 
                           <option value="video">Video</option>

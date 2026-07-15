@@ -16,6 +16,33 @@ static TS_RE_DASH_FULL: OnceLock<regex::Regex> = OnceLock::new();
 static TS_RE_DOT_FULL: OnceLock<regex::Regex> = OnceLock::new();
 static SVG_RE_WIDTH: OnceLock<regex::Regex> = OnceLock::new();
 static SVG_RE_HEIGHT: OnceLock<regex::Regex> = OnceLock::new();
+static PHONE_LIKE_RE: OnceLock<regex::Regex> = OnceLock::new();
+
+static MEMBERSHIP_RE_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_EN_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_EN_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_EN_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_EN_WAS_ADDED: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_EN_WAS_REMOVED: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SPLIT_TARGETS: OnceLock<regex::Regex> = OnceLock::new();
+
+// Auto-links established by reconcile_contacts_and_chats since the frontend last drained them
+// (via take_pending_auto_links). Reconciliation runs from places with no direct request/response
+// path back to a listening frontend (startup, and deep inside spawn_blocking after import), so
+// results are queued here instead of returned directly.
+static PENDING_AUTO_LINKS: OnceLock<Mutex<Vec<AutoLinkEvent>>> = OnceLock::new();
+
+fn queue_auto_link_events(events: Vec<AutoLinkEvent>) {
+    if events.is_empty() { return; }
+    let mutex = PENDING_AUTO_LINKS.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut pending) = mutex.lock() {
+        pending.extend(events);
+    }
+}
 
 // ============================================================================
 // GLOBAL DATABASE CONNECTION
@@ -917,6 +944,40 @@ fn init_database() -> SqliteResult<Connection> {
 
     )?;
 
+    // Create contacts table — a shared identity independent of any one chat, used to link
+    // group participants to a 1-on-1 chat's profile (and to each other across groups).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS contacts (
+            id TEXT PRIMARY KEY,
+            normalized_key TEXT NOT NULL UNIQUE,
+            display_key TEXT NOT NULL,
+            name TEXT,
+            notes TEXT,
+            photo_path TEXT,
+            phone_number TEXT
+        )",
+        [],
+    )?;
+
+    // Add contact_id column to chats if it doesn't exist yet (links a 1-on-1 chat to a contact)
+    let _ = conn.execute(
+        "ALTER TABLE chats ADD COLUMN contact_id TEXT REFERENCES contacts(id)",
+        [],
+    );
+
+    // Create contact_groups table — tracks which group chats a contact has been resolved in.
+    // `excluded` is a soft-remove flag set by the "Remove group" action in the profile dialog;
+    // it's only cleared again by explicitly re-editing that participant from that same group.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS contact_groups (
+            contact_id TEXT NOT NULL REFERENCES contacts(id),
+            chat_id TEXT NOT NULL REFERENCES chats(id),
+            excluded INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (contact_id, chat_id)
+        )",
+        [],
+    )?;
+
     // Create file renames table
 
     conn.execute(
@@ -943,8 +1004,65 @@ fn init_database() -> SqliteResult<Connection> {
 
     )?;
 
+    reclassify_misdetected_groups(&conn);
+    queue_auto_link_events(reconcile_contacts_and_chats(&conn));
+
+
     Ok(conn)
 
+}
+
+// One-time correction for chats mis-detected as groups by an earlier, less accurate version
+// of detect_group_chat (which treated any 2 distinct senders as a group — see the comment on
+// that function for why that's wrong). Re-runs the corrected detection against already-stored
+// messages and fixes both `is_group` and the "(Group)" suffix baked into the name at import.
+fn reclassify_misdetected_groups(conn: &Connection) {
+    let group_chats: Vec<(String, String)> = {
+        let mut stmt = match conn.prepare("SELECT id, name FROM chats WHERE is_group = 1") {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let rows = match stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+            Ok(rows) => rows,
+            Err(_) => return,
+        };
+        rows.flatten().collect()
+    };
+
+    for (chat_id, name) in group_chats {
+        let mut stmt = match conn.prepare(
+            "SELECT sender, msg_type, content FROM messages WHERE chat_id = ?1"
+        ) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let rows = match stmt.query_map(params![&chat_id], |row| {
+            Ok(Message {
+                id: None,
+                timestamp: String::new(),
+                sender: row.get(0)?,
+                msg_type: row.get(1)?,
+                content: row.get(2)?,
+                media: None,
+                duration: None,
+                tag_ext: None,
+                display_name: None,
+                is_favorite: None,
+            })
+        }) {
+            Ok(rows) => rows,
+            Err(_) => continue,
+        };
+        let messages: Vec<Message> = rows.flatten().collect();
+
+        if !detect_group_chat(&messages) {
+            let corrected_name = name.strip_suffix(" (Group)").unwrap_or(&name).to_string();
+            let _ = conn.execute(
+                "UPDATE chats SET is_group = 0, name = ?1 WHERE id = ?2",
+                params![&corrected_name, &chat_id],
+            );
+        }
+    }
 }
 
 
@@ -1154,7 +1272,11 @@ async fn pick_zip_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
 #[tauri::command]
 
 async fn import_chats_batch(zip_paths: Vec<String>) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || import_chats_batch_inner(zip_paths)).await.map_err(|e| e.to_string())?
+    let result = tauri::async_runtime::spawn_blocking(move || import_chats_batch_inner(zip_paths)).await.map_err(|e| e.to_string())?;
+    if result.is_ok() {
+        run_post_import_reconciliation().await;
+    }
+    result
 }
 
 fn import_chats_batch_inner(zip_paths: Vec<String>) -> Result<Vec<String>, String> {
@@ -1194,7 +1316,11 @@ fn import_chats_batch_inner(zip_paths: Vec<String>) -> Result<Vec<String>, Strin
 #[tauri::command]
 
 async fn import_chat(zip_path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || import_chat_inner(zip_path)).await.map_err(|e| e.to_string())?
+    let result = tauri::async_runtime::spawn_blocking(move || import_chat_inner(zip_path)).await.map_err(|e| e.to_string())?;
+    if result.is_ok() {
+        run_post_import_reconciliation().await;
+    }
+    result
 }
 
 fn import_chat_inner(zip_path: String) -> Result<String, String> {
@@ -1609,6 +1735,8 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
         ).map_err(|e| format!("Failed to update chat metadata: {}", e))?;
 
+        link_chat_to_contact_if_match(&conn, &existing_id, is_group);
+
 
 
         // Clean up temp import dir
@@ -1651,7 +1779,9 @@ fn import_chat_inner(zip_path: String) -> Result<String, String> {
 
     ).map_err(|e| format!("Failed to insert chat: {}", e))?;
 
-    
+    link_chat_to_contact_if_match(&conn, &chat_id, is_group);
+
+
 
     // Insert all messages
 
@@ -1829,6 +1959,30 @@ fn timestamp_to_epoch(ts: &str) -> i64 {
 
 
 
+fn iso_date_to_epoch(date_str: &str, end_of_day: bool) -> Option<i64> {
+    // Parses "YYYY-MM-DD" (as produced by <input type="date">) into seconds since Unix epoch (UTC).
+    let parts: Vec<&str> = date_str.split('-').collect();
+    if parts.len() != 3 { return None; }
+    let y: i64 = parts[0].parse().ok()?;
+    let m: i64 = parts[1].parse().ok()?;
+    let d: i64 = parts[2].parse().ok()?;
+
+    let months = [31i64,28,31,30,31,30,31,31,30,31,30,31];
+    let is_leap = |yr: i64| (yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0;
+
+    let mut days: i64 = 0;
+    for yr in 1970..y {
+        days += if is_leap(yr) { 366 } else { 365 };
+    }
+    for mo in 1..m {
+        days += months[(mo - 1) as usize];
+        if mo == 2 && is_leap(y) { days += 1; }
+    }
+    days += d - 1;
+
+    Some(days * 86400 + if end_of_day { 86399 } else { 0 })
+}
+
 fn normalize_chat_name(name: &str) -> String {
 
     name.trim()
@@ -1837,6 +1991,12 @@ fn normalize_chat_name(name: &str) -> String {
 
         .to_lowercase()
 
+}
+
+fn looks_like_phone_number(s: &str) -> bool {
+    let stripped: String = s.chars().filter(|c| !matches!(c, ' ' | '-' | '(' | ')')).collect();
+    let re = PHONE_LIKE_RE.get_or_init(|| regex::Regex::new(r"^\+?\d{7,15}$").unwrap());
+    re.is_match(&stripped)
 }
 
 
@@ -2039,12 +2199,12 @@ fn detect_group_chat(messages: &[Message]) -> bool {
 
         .collect();
 
-    if senders.len() > 1 {
-        return true;
-    }
-
-    // A group chat may have only 1 non-You sender (e.g. you created a group with one person,
-    // or the other person left so only one active sender remains). Detect via system messages.
+    // An explicit system message about group creation/membership is the only fully reliable
+    // signal here. Sender count alone can't distinguish a group from an ordinary 1-on-1
+    // conversation: real WhatsApp exports never actually label the account owner "You" (that
+    // filter above is a defensive no-op for the rare export that might), so a normal 2-person
+    // chat where both people sent messages under their real names also has exactly 2 distinct
+    // senders — the same as it would if this were a 2-person group. Check indicators first.
     let group_indicators = [
         // English
         "created group",
@@ -2093,12 +2253,20 @@ fn detect_group_chat(messages: &[Message]) -> bool {
         "vous a ajouté",
     ];
 
-    messages.iter()
+    let has_group_indicator = messages.iter()
         .filter(|m| m.sender == "System" || m.msg_type == "system")
         .any(|m| {
             let content_lower = m.content.to_lowercase();
             group_indicators.iter().any(|indicator| content_lower.contains(&indicator.to_lowercase()))
-        })
+        });
+
+    if has_group_indicator {
+        return true;
+    }
+
+    // Fallback for exports where the group-creation message wasn't captured: 3+ distinct
+    // senders can only happen in a group, since a 1-on-1 chat has exactly 2 participants.
+    senders.len() > 2
 
 }
 
@@ -4221,7 +4389,9 @@ fn migrate_from_json() -> SqliteResult<()> {
 
                 )?;
 
-                
+                link_chat_to_contact_if_match(&conn, &chat_id, meta.is_group);
+
+
 
                 // Migrate messages
 
@@ -4531,29 +4701,12 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
     
 
-    if let Some(date_from) = &filters.date_from {
-
-        where_conditions.push(format!("timestamp >= ?{}", param_index));
-
-        params.push(Box::new(date_from.clone()));
-
-        param_index += 1;
-
-    }
-
-    
-
-    if let Some(date_to) = &filters.date_to {
-
-        where_conditions.push(format!("timestamp <= ?{}", param_index));
-
-        params.push(Box::new(date_to.clone()));
-
-        param_index += 1;
-
-    }
-
-    
+    // Note: date_from/date_to are "YYYY-MM-DD" strings from an <input type="date">, while the
+    // stored timestamp column holds WhatsApp's native export format (e.g. "17/06/2024 00:04").
+    // The two aren't lexicographically comparable, so date bounds are applied after fetching
+    // via timestamp_to_epoch instead of in SQL.
+    let epoch_from = filters.date_from.as_deref().and_then(|d| iso_date_to_epoch(d, false));
+    let epoch_to = filters.date_to.as_deref().and_then(|d| iso_date_to_epoch(d, true));
 
     if let Some(sender_filter) = &filters.sender {
 
@@ -4569,20 +4722,51 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
     if let Some(msg_type_filter) = &filters.msg_type {
 
-        where_conditions.push(format!("msg_type = ?{}", param_index));
+        // Media files that predate an extension being added to the classifier (or that were
+        // never reclassified out of "file") still render client-side as image/video/audio via
+        // extension sniffing (see IMAGE_EXTS/VIDEO_EXTS/AUDIO_EXTS in types.ts). Mirror that
+        // fallback here so the filter matches what the user actually sees in the chat.
+        let exts: Option<&[&str]> = match msg_type_filter.as_str() {
+            "video" => Some(&["mp4", "mov", "avi", "mkv", "webm", "m4v", "ts", "flv", "wmv"]),
+            "image" => Some(&["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "svg", "tif", "tiff", "avif", "jfif", "ico"]),
+            "audio" => Some(&["mp3", "ogg", "opus", "wav", "m4a", "aac", "3gp", "3gpp", "amr", "flac", "wma"]),
+            _ => None,
+        };
 
-        params.push(Box::new(msg_type_filter.clone()));
+        if let Some(exts) = exts {
+            let mut sub_conditions = vec![format!("msg_type = ?{}", param_index)];
+            params.push(Box::new(msg_type_filter.clone()));
+            param_index += 1;
 
-        param_index += 1;
+            let mut ext_conditions = Vec::new();
+            for ext in exts {
+                ext_conditions.push(format!("LOWER(media) LIKE ?{}", param_index));
+                params.push(Box::new(format!("%.{}", ext)));
+                param_index += 1;
+            }
+            sub_conditions.push(format!("(msg_type = 'file' AND ({}))", ext_conditions.join(" OR ")));
+
+            where_conditions.push(format!("({})", sub_conditions.join(" OR ")));
+        } else {
+
+            where_conditions.push(format!("msg_type = ?{}", param_index));
+
+            params.push(Box::new(msg_type_filter.clone()));
+
+            param_index += 1;
+
+        }
 
     }
 
     let _ = param_index;
 
-    
 
-    // Always exclude system messages from search results
-    where_conditions.push("msg_type != 'system'".to_string());
+
+    // Exclude system messages unless the user explicitly asked to filter for them
+    if filters.msg_type.as_deref() != Some("system") {
+        where_conditions.push("msg_type != 'system'".to_string());
+    }
 
     let where_clause = where_conditions.join(" AND ");
 
@@ -4641,13 +4825,22 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
 
         let (row_idx, timestamp, sender, msg_type, content) = row.map_err(|e| e.to_string())?;
 
-        
+        // Apply date range filter (compared as epoch seconds, see note above)
+        if epoch_from.is_some() || epoch_to.is_some() {
+            let ts_epoch = timestamp_to_epoch(&timestamp);
+            if let Some(from) = epoch_from {
+                if ts_epoch < from { continue; }
+            }
+            if let Some(to) = epoch_to {
+                if ts_epoch > to { continue; }
+            }
+        }
 
         // Apply text search filter if query is not empty
 
-        if filters.query.is_empty() || 
+        if filters.query.is_empty() ||
 
-           content.to_lowercase().contains(&search_lower) || 
+           content.to_lowercase().contains(&search_lower) ||
 
            sender.to_lowercase().contains(&search_lower) ||
 
@@ -4758,6 +4951,8 @@ pub struct Profile {
 
     pub original_name: Option<String>,
 
+    pub contact_id: Option<String>,
+
 }
 
 
@@ -4768,7 +4963,7 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
     let conn = get_db();
 
-    
+
 
     let original_name: Option<String> = conn.query_row(
 
@@ -4779,6 +4974,18 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
         |row| row.get(0),
 
     ).ok();
+
+
+
+    let contact_id: Option<String> = conn.query_row(
+
+        "SELECT contact_id FROM chats WHERE id = ?1",
+
+        [&chat_id],
+
+        |row| row.get(0),
+
+    ).ok().flatten();
 
 
 
@@ -4806,6 +5013,8 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
             original_name: None,
 
+            contact_id: None,
+
         })
 
     });
@@ -4814,7 +5023,7 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
 
     match profile {
 
-        Ok(mut p) => { p.original_name = original_name; Ok(p) },
+        Ok(mut p) => { p.original_name = original_name; p.contact_id = contact_id; Ok(p) },
 
         Err(_) => Ok(Profile {
 
@@ -4829,6 +5038,8 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
             phone_number: None,
 
             original_name,
+
+            contact_id,
 
         })
 
@@ -4910,7 +5121,24 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
 
     }
 
-
+    // Mirror into the linked contact, if this chat is tied to one, so a group participant's
+    // resolved profile (and any other chat sharing that contact) sees the same update.
+    let linked_contact_id: Option<String> = conn.query_row(
+        "SELECT contact_id FROM chats WHERE id = ?1",
+        params![&chat_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    if let Some(contact_id) = linked_contact_id {
+        conn.execute(
+            "UPDATE contacts SET
+             name = COALESCE(?2, name),
+             notes = COALESCE(?3, notes),
+             photo_path = COALESCE(?4, photo_path),
+             phone_number = COALESCE(?5, phone_number)
+             WHERE id = ?1",
+            params![&contact_id, &name, &notes, &photo_path, &phone_number],
+        ).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 
@@ -4934,7 +5162,17 @@ fn remove_profile_photo(chat_id: String) -> Result<(), String> {
 
     ).map_err(|e| e.to_string())?;
 
-
+    let linked_contact_id: Option<String> = conn.query_row(
+        "SELECT contact_id FROM chats WHERE id = ?1",
+        params![&chat_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    if let Some(contact_id) = linked_contact_id {
+        conn.execute(
+            "UPDATE contacts SET photo_path = NULL WHERE id = ?1",
+            params![&contact_id],
+        ).map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 
@@ -5010,6 +5248,690 @@ fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), Stri
 
     Ok(())
 
+}
+
+// =============================================================================
+// Contacts — shared profile identity for group participants (see contact-linking-spec.md)
+// =============================================================================
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AutoLinkEvent {
+    pub contact_id: String,
+    pub contact_name: String,
+    pub chat_id: String,
+    pub chat_name: String,
+    pub via_group: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Contact {
+    pub id: String,
+    pub normalized_key: String,
+    pub display_key: String,
+    pub name: Option<String>,
+    pub notes: Option<String>,
+    pub photo_path: Option<String>,
+    pub phone_number: Option<String>,
+}
+
+fn get_contact_by_id(conn: &Connection, contact_id: &str) -> Option<Contact> {
+    conn.query_row(
+        "SELECT id, normalized_key, display_key, name, notes, photo_path, phone_number FROM contacts WHERE id = ?1",
+        params![contact_id],
+        |row| Ok(Contact {
+            id: row.get(0)?,
+            normalized_key: row.get(1)?,
+            display_key: row.get(2)?,
+            name: row.get(3)?,
+            notes: row.get(4)?,
+            photo_path: row.get(5)?,
+            phone_number: row.get(6)?,
+        })
+    ).ok()
+}
+
+// Links a 1-on-1 chat to a contact, then copies the contact's non-null fields down into the
+// chat's own profile (same COALESCE semantics as update_profile) so its Profile dialog reflects
+// the shared data immediately.
+fn link_chat_and_contact(conn: &Connection, chat_id: &str, contact_id: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE chats SET contact_id = ?1 WHERE id = ?2",
+        params![contact_id, chat_id],
+    ).map_err(|e| e.to_string())?;
+
+    if let Some(contact) = get_contact_by_id(conn, contact_id) {
+        conn.execute(
+            "INSERT INTO profiles (chat_id, name, notes, photo_path, phone_number, profile_modified)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1)
+             ON CONFLICT(chat_id) DO UPDATE SET
+             name = COALESCE(?2, name),
+             notes = COALESCE(?3, notes),
+             photo_path = COALESCE(?4, photo_path),
+             phone_number = COALESCE(?5, phone_number),
+             profile_modified = 1",
+            params![chat_id, &contact.name, &contact.notes, &contact.photo_path, &contact.phone_number],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Finds an unlinked 1-on-1 chat whose *display* name (`chats.name` — already stripped of any
+// "WhatsApp-chat met " / "WhatsApp Chat with " / etc. export prefix at import time) normalizes
+// to match. Deliberately does NOT use `original_name`: that column keeps the raw ZIP filename
+// (prefix and all) for merge-on-reimport dedup, which lives in a different identity space than
+// a bare group-participant sender string like "Manuel" — comparing against it would (and did)
+// silently fail to match ordinary prefixed exports.
+fn find_unlinked_one_on_one_chat_by_name(conn: &Connection, normalized: &str) -> Option<String> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name FROM chats WHERE is_group = 0 AND contact_id IS NULL"
+    ).ok()?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }).ok()?;
+
+    for row in rows.flatten() {
+        if normalize_chat_name(&row.1) == normalized {
+            return Some(row.0);
+        }
+    }
+    None
+}
+
+// Seeds a new contact from an existing 1-on-1 chat's profile data and links them together.
+// Shared by the interactive participant-edit resolver and the reconciliation pass below.
+fn create_contact_from_chat_and_link(conn: &Connection, chat_id: &str, normalized: &str, display_key: &str) -> Result<String, String> {
+    let existing_profile: (Option<String>, Option<String>, Option<String>, Option<String>) = conn.query_row(
+        "SELECT name, notes, photo_path, phone_number FROM profiles WHERE chat_id = ?1",
+        params![chat_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    ).unwrap_or((None, None, None, None));
+
+    let new_id = Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO contacts (id, normalized_key, display_key, name, notes, photo_path, phone_number) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![&new_id, normalized, display_key, &existing_profile.0, &existing_profile.1, &existing_profile.2, &existing_profile.3],
+    ).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE chats SET contact_id = ?1 WHERE id = ?2",
+        params![&new_id, chat_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(new_id)
+}
+
+fn chat_name_for(conn: &Connection, chat_id: &str) -> String {
+    conn.query_row("SELECT name FROM chats WHERE id = ?1", params![chat_id], |row| row.get(0))
+        .unwrap_or_else(|_| chat_id.to_string())
+}
+
+// Comprehensive reconciliation: links any contact and 1-on-1 chat that represent the same person
+// but haven't been connected yet. Runs at app startup and after every import so this doesn't
+// require manually opening/editing each chat, or restarting the app to pick up new matches.
+fn reconcile_contacts_and_chats(conn: &Connection) -> Vec<AutoLinkEvent> {
+    let mut events = Vec::new();
+
+    // Pass 1: for every group's participants (including former members — matching is about
+    // identity, not current membership), auto-create + link a contact when a matching unlinked
+    // 1-on-1 chat exists and no contact exists yet for that person. Scoped strictly to "a match
+    // was found" — never creates a contact for a participant with no matching chat.
+    let group_chats: Vec<(String, String)> = {
+        let mut stmt = match conn.prepare("SELECT id, name FROM chats WHERE is_group = 1") {
+            Ok(s) => s,
+            Err(_) => return events,
+        };
+        let rows = match stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+            Ok(rows) => rows,
+            Err(_) => return events,
+        };
+        rows.flatten().collect()
+    };
+
+    for (group_chat_id, group_name) in group_chats {
+        let participants: Vec<String> = {
+            let mut stmt = match conn.prepare(
+                "SELECT DISTINCT sender FROM messages WHERE chat_id = ?1 AND sender != 'System' AND msg_type != 'system'"
+            ) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let rows = match stmt.query_map(params![&group_chat_id], |row| row.get::<_, String>(0)) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+            rows.flatten().collect()
+        };
+
+        for participant in participants {
+            let normalized = normalize_chat_name(&participant);
+
+            let existing_contact_id: Option<String> = conn.query_row(
+                "SELECT id FROM contacts WHERE normalized_key = ?1",
+                params![&normalized],
+                |row| row.get(0),
+            ).ok();
+
+            if let Some(contact_id) = existing_contact_id {
+                // Contact already resolved elsewhere (edit-click or earlier match) — backfill this
+                // group into contact_groups too. ON CONFLICT DO NOTHING so a group the user
+                // explicitly removed (excluded = 1) is never silently resurrected by a later
+                // reimport/restart; only re-editing that participant from this group brings it back.
+                let _ = conn.execute(
+                    "INSERT INTO contact_groups (contact_id, chat_id, excluded) VALUES (?1, ?2, 0)
+                     ON CONFLICT(contact_id, chat_id) DO NOTHING",
+                    params![&contact_id, &group_chat_id],
+                );
+                continue;
+            }
+
+            if let Some(chat_id) = find_unlinked_one_on_one_chat_by_name(conn, &normalized) {
+                let Ok(contact_id) = create_contact_from_chat_and_link(conn, &chat_id, &normalized, &participant) else { continue; };
+                let _ = conn.execute(
+                    "INSERT INTO contact_groups (contact_id, chat_id, excluded) VALUES (?1, ?2, 0)
+                     ON CONFLICT(contact_id, chat_id) DO UPDATE SET excluded = 0",
+                    params![&contact_id, &group_chat_id],
+                );
+                events.push(AutoLinkEvent {
+                    contact_id,
+                    contact_name: participant.clone(),
+                    chat_name: chat_name_for(conn, &chat_id),
+                    chat_id,
+                    via_group: Some(group_name.clone()),
+                });
+            }
+        }
+    }
+
+    // Pass 2: contacts that already existed before this pass (from a previous edit-click, or
+    // just created above), matched against unlinked chats — covers the "import while the app is
+    // already running" gap, without needing a restart for the startup pass to catch it.
+    let contacts: Vec<(String, String)> = {
+        let mut stmt = match conn.prepare("SELECT id, normalized_key FROM contacts") {
+            Ok(s) => s,
+            Err(_) => return events,
+        };
+        let rows = match stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+            Ok(rows) => rows,
+            Err(_) => return events,
+        };
+        rows.flatten().collect()
+    };
+
+    for (contact_id, normalized_key) in contacts {
+        let already_linked: bool = conn.query_row(
+            "SELECT 1 FROM chats WHERE contact_id = ?1",
+            params![&contact_id],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if already_linked { continue; }
+
+        if let Some(chat_id) = find_unlinked_one_on_one_chat_by_name(conn, &normalized_key) {
+            if link_chat_and_contact(conn, &chat_id, &contact_id).is_ok() {
+                let contact_name = get_contact_by_id(conn, &contact_id)
+                    .map(|c| c.name.unwrap_or(c.display_key))
+                    .unwrap_or_else(|| normalized_key.clone());
+                events.push(AutoLinkEvent {
+                    contact_id,
+                    contact_name,
+                    chat_name: chat_name_for(conn, &chat_id),
+                    chat_id,
+                    via_group: None,
+                });
+            }
+        }
+    }
+
+    events
+}
+
+// Runs the reconciliation pass once, off the async runtime thread, after an import operation
+// completes — so batch-import cross-references (a group and its matching 1-on-1 chat imported
+// together) resolve immediately, without requiring an app restart.
+async fn run_post_import_reconciliation() {
+    let _ = tauri::async_runtime::spawn_blocking(|| {
+        let conn = get_db();
+        queue_auto_link_events(reconcile_contacts_and_chats(&conn));
+    }).await;
+}
+
+// Called after a 1-on-1 chat is created/resolved during import. No-op for groups or chats
+// already linked. If an unlinked contact exists whose normalized key matches this chat's
+// (already prefix-stripped) display name, links them.
+fn link_chat_to_contact_if_match(conn: &Connection, chat_id: &str, is_group: bool) {
+    if is_group { return; }
+
+    let already_linked: bool = conn.query_row(
+        "SELECT contact_id IS NOT NULL FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    ).unwrap_or(false);
+    if already_linked { return; }
+
+    let name: Option<String> = conn.query_row(
+        "SELECT name FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    ).ok();
+    let Some(name) = name else { return; };
+
+    let normalized = normalize_chat_name(&name);
+    let contact_id: Option<String> = conn.query_row(
+        "SELECT id FROM contacts WHERE normalized_key = ?1",
+        params![&normalized],
+        |row| row.get(0),
+    ).ok();
+
+    if let Some(contact_id) = contact_id {
+        let _ = link_chat_and_contact(conn, chat_id, &contact_id);
+    }
+}
+
+#[tauri::command]
+fn get_or_create_contact_for_participant(participant_name: String, group_chat_id: String) -> Result<Contact, String> {
+    let conn = get_db();
+    let normalized = normalize_chat_name(&participant_name);
+
+    // A contact for this normalized key may already exist (e.g. created from a different
+    // group), regardless of whether a matching 1-on-1 chat also exists — always check for and
+    // reuse it first, rather than potentially creating a duplicate.
+    let existing_contact_id: Option<String> = conn.query_row(
+        "SELECT id FROM contacts WHERE normalized_key = ?1",
+        params![&normalized],
+        |row| row.get(0),
+    ).ok();
+
+    let contact_id = if let Some(cid) = existing_contact_id {
+        let already_linked: bool = conn.query_row(
+            "SELECT 1 FROM chats WHERE contact_id = ?1",
+            params![&cid],
+            |_| Ok(true),
+        ).unwrap_or(false);
+
+        // Not linked yet — opportunistically link now if a matching chat exists (it may have
+        // existed all along, or been imported at any point since this contact was created).
+        if !already_linked {
+            if let Some(chat_id) = find_unlinked_one_on_one_chat_by_name(&conn, &normalized) {
+                let _ = link_chat_and_contact(&conn, &chat_id, &cid);
+            }
+        }
+
+        cid
+    } else if let Some(chat_id) = find_unlinked_one_on_one_chat_by_name(&conn, &normalized) {
+        // No contact yet, but a matching unlinked 1-on-1 chat exists — seed a new contact from
+        // its current profile data, then link them.
+        create_contact_from_chat_and_link(&conn, &chat_id, &normalized, &participant_name)?
+    } else {
+        // No contact, no matching chat — create a fresh shadow contact.
+        let new_id = Uuid::new_v4().to_string();
+        let (seed_name, seed_phone) = if looks_like_phone_number(&participant_name) {
+            (None, Some(participant_name.clone()))
+        } else {
+            (Some(participant_name.clone()), None)
+        };
+        conn.execute(
+            "INSERT INTO contacts (id, normalized_key, display_key, name, phone_number) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![&new_id, &normalized, &participant_name, &seed_name, &seed_phone],
+        ).map_err(|e| e.to_string())?;
+        new_id
+    };
+
+    // Regardless of which branch above, record/reaffirm this contact's presence in this group.
+    conn.execute(
+        "INSERT INTO contact_groups (contact_id, chat_id, excluded) VALUES (?1, ?2, 0)
+         ON CONFLICT(contact_id, chat_id) DO UPDATE SET excluded = 0",
+        params![&contact_id, &group_chat_id],
+    ).map_err(|e| e.to_string())?;
+
+    get_contact_by_id(&conn, &contact_id).ok_or_else(|| "Failed to load contact".to_string())
+}
+
+#[tauri::command]
+fn get_contact_profile(contact_id: String) -> Result<Contact, String> {
+    let conn = get_db();
+    get_contact_by_id(&conn, &contact_id).ok_or_else(|| "Contact not found".to_string())
+}
+
+// Drains and returns any auto-links reconcile_contacts_and_chats has established since this was
+// last called, so the frontend can show a one-time review popup. Called once after each import
+// operation and once on initial app load (to catch whatever the startup pass found).
+#[tauri::command]
+fn take_pending_auto_links() -> Vec<AutoLinkEvent> {
+    let mutex = PENDING_AUTO_LINKS.get_or_init(|| Mutex::new(Vec::new()));
+    match mutex.lock() {
+        Ok(mut pending) => std::mem::take(&mut *pending),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[tauri::command]
+fn update_contact_profile(contact_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
+    let conn = get_db();
+
+    conn.execute(
+        "UPDATE contacts SET
+         name = COALESCE(?2, name),
+         notes = COALESCE(?3, notes),
+         photo_path = COALESCE(?4, photo_path),
+         phone_number = COALESCE(?5, phone_number)
+         WHERE id = ?1",
+        params![&contact_id, &name, &notes, &photo_path, &phone_number],
+    ).map_err(|e| e.to_string())?;
+
+    // Mirror into the linked chat's own profile, if any.
+    let linked_chat_id: Option<String> = conn.query_row(
+        "SELECT id FROM chats WHERE contact_id = ?1",
+        params![&contact_id],
+        |row| row.get(0),
+    ).ok();
+    if let Some(chat_id) = linked_chat_id {
+        conn.execute(
+            "INSERT INTO profiles (chat_id, name, notes, photo_path, phone_number, profile_modified)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1)
+             ON CONFLICT(chat_id) DO UPDATE SET
+             name = COALESCE(?2, name),
+             notes = COALESCE(?3, notes),
+             photo_path = COALESCE(?4, photo_path),
+             phone_number = COALESCE(?5, phone_number),
+             profile_modified = 1",
+            params![&chat_id, &name, &notes, &photo_path, &phone_number],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_contact_photo(contact_id: String) -> Result<(), String> {
+    let conn = get_db();
+
+    conn.execute(
+        "UPDATE contacts SET photo_path = NULL WHERE id = ?1",
+        params![&contact_id],
+    ).map_err(|e| e.to_string())?;
+
+    let linked_chat_id: Option<String> = conn.query_row(
+        "SELECT id FROM chats WHERE contact_id = ?1",
+        params![&contact_id],
+        |row| row.get(0),
+    ).ok();
+    if let Some(chat_id) = linked_chat_id {
+        conn.execute(
+            "UPDATE profiles SET photo_path = NULL WHERE chat_id = ?1",
+            params![&chat_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_contact_groups(contact_id: String) -> Result<Vec<ChatMeta>, String> {
+    let conn = get_db();
+    let mut stmt = conn.prepare(
+        "SELECT chats.id, COALESCE(profiles.name, chats.name), chats.last_message, chats.timestamp, chats.is_group, chats.zip_path, profiles.photo_path
+         FROM contact_groups
+         JOIN chats ON chats.id = contact_groups.chat_id
+         LEFT JOIN profiles ON profiles.chat_id = chats.id
+         WHERE contact_groups.contact_id = ?1 AND contact_groups.excluded = 0
+         ORDER BY chats.last_message_epoch DESC"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map(params![&contact_id], |row| {
+        Ok(ChatMeta {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            last_message: row.get(2)?,
+            timestamp: row.get(3)?,
+            is_group: row.get::<_, i32>(4)? != 0,
+            zip_path: row.get(5)?,
+            photo_path: row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(rows.flatten().collect())
+}
+
+#[tauri::command]
+fn remove_contact_group(contact_id: String, chat_id: String) -> Result<(), String> {
+    let conn = get_db();
+    conn.execute(
+        "UPDATE contact_groups SET excluded = 1 WHERE contact_id = ?1 AND chat_id = ?2",
+        params![&contact_id, &chat_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_linked_participants(participant_names: Vec<String>) -> Result<Vec<String>, String> {
+    let conn = get_db();
+    let mut linked = Vec::new();
+    for name in participant_names {
+        let normalized = normalize_chat_name(&name);
+        let is_linked: bool = conn.query_row(
+            "SELECT 1 FROM contacts JOIN chats ON chats.contact_id = contacts.id WHERE contacts.normalized_key = ?1",
+            params![&normalized],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        if is_linked {
+            linked.push(name);
+        }
+    }
+    Ok(linked)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MembershipEvent {
+    Left,
+    Added,
+}
+
+// Some group-attribute-change system messages ("removed the group picture", "changed the group
+// name") share the same trailing verb as a person add/remove ("verwijderd"/"toegevoegd") and
+// would otherwise be misread as someone leaving/joining. Reject those specific targets.
+fn is_group_attribute_target(target: &str) -> bool {
+    let t = target.trim();
+    t.starts_with("de groep")
+        || t.eq_ignore_ascii_case("je") // "{actor} heeft je toegevoegd/verwijderd" references "you", not a trackable name
+        || t.eq_ignore_ascii_case("you")
+        || t.eq_ignore_ascii_case("the group")
+        || t.eq_ignore_ascii_case("this group")
+        || t.to_lowercase().starts_with("the group ")
+}
+
+// WhatsApp batches multiple people into one system message: "X heeft Y en Z toegevoegd" or
+// "X heeft Y, Z en W toegevoegd". Split on Dutch/English list separators.
+fn split_membership_targets(targets: &str) -> Vec<String> {
+    let re = MEMBERSHIP_RE_SPLIT_TARGETS.get_or_init(|| regex::Regex::new(r",\s*| en | and ").unwrap());
+    re.split(targets)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+// Scans a group's system messages (in stored/chronological order) for membership-change events
+// and returns (normalized_name, event) pairs in that same order — the caller keeps only each
+// name's *last* event to know whether they've currently left. Dutch patterns are verified
+// against real exported system messages; English patterns are best-effort (see plan doc).
+fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEvent)> {
+    let self_left = MEMBERSHIP_RE_SELF_LEFT.get_or_init(|| regex::Regex::new(r"^(.+) heeft de groep verlaten$").unwrap());
+    let third_add = MEMBERSHIP_RE_THIRD_ADD.get_or_init(|| regex::Regex::new(r"^.+? heeft (.+) toegevoegd$").unwrap());
+    let third_remove = MEMBERSHIP_RE_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"^.+? heeft (.+) verwijderd$").unwrap());
+    let you_add = MEMBERSHIP_RE_YOU_ADD.get_or_init(|| regex::Regex::new(r"^Je hebt (.+) toegevoegd$").unwrap());
+    let you_remove = MEMBERSHIP_RE_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"^Je hebt (.+) verwijderd$").unwrap());
+    let en_self_left = MEMBERSHIP_RE_EN_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) left$").unwrap());
+    let en_third_add = MEMBERSHIP_RE_EN_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? added (.+)$").unwrap());
+    let en_third_remove = MEMBERSHIP_RE_EN_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? removed (.+)$").unwrap());
+    let en_was_added = MEMBERSHIP_RE_EN_WAS_ADDED.get_or_init(|| regex::Regex::new(r"(?i)^(.+) was added$").unwrap());
+    let en_was_removed = MEMBERSHIP_RE_EN_WAS_REMOVED.get_or_init(|| regex::Regex::new(r"(?i)^(.+) was removed$").unwrap());
+
+    let mut events = Vec::new();
+
+    for raw in messages {
+        // Strip WhatsApp's invisible LTR/RTL marks that prefix many system messages.
+        let content: String = raw.chars().filter(|c| !matches!(*c,
+            '\u{200E}' | '\u{200F}' | '\u{FEFF}' | '\u{200B}'
+        )).collect();
+        let content = content.trim();
+
+        if content == "Je hebt de groep verlaten" || content.eq_ignore_ascii_case("you left") {
+            continue; // "you" left — no participant name to extract
+        }
+
+        if let Some(caps) = self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        } else if let Some(caps) = en_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = en_was_removed.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+            }
+        } else if let Some(caps) = en_was_added.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                events.push((normalize_chat_name(&caps[1]), MembershipEvent::Added));
+            }
+        } else if let Some(caps) = en_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = en_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        }
+    }
+
+    events
+}
+
+#[tauri::command]
+fn get_former_members(chat_id: String, participant_names: Vec<String>) -> Result<Vec<String>, String> {
+    let conn = get_db();
+
+    let messages: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT content FROM messages WHERE chat_id = ?1 AND (sender = 'System' OR msg_type = 'system') ORDER BY id"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![&chat_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.flatten().collect()
+    };
+
+    let events = extract_membership_events(&messages);
+
+    let mut last_event: HashMap<String, MembershipEvent> = HashMap::new();
+    for (name, event) in events {
+        last_event.insert(name, event);
+    }
+
+    let former: Vec<String> = participant_names.into_iter()
+        .filter(|name| {
+            let normalized = normalize_chat_name(name);
+            matches!(last_event.get(&normalized), Some(MembershipEvent::Left))
+        })
+        .collect();
+
+    Ok(former)
+}
+
+#[tauri::command]
+fn get_linked_chat_for_contact(contact_id: String) -> Result<Option<ChatMeta>, String> {
+    let conn = get_db();
+    let mut stmt = conn.prepare(
+        "SELECT chats.id, COALESCE(profiles.name, chats.name), chats.last_message, chats.timestamp, chats.is_group, chats.zip_path, profiles.photo_path
+         FROM chats LEFT JOIN profiles ON chats.id = profiles.chat_id
+         WHERE chats.contact_id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(params![&contact_id], |row| {
+        Ok(ChatMeta {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            last_message: row.get(2)?,
+            timestamp: row.get(3)?,
+            is_group: row.get::<_, i32>(4)? != 0,
+            zip_path: row.get(5)?,
+            photo_path: row.get(6)?,
+        })
+    });
+
+    Ok(result.ok())
+}
+
+#[tauri::command]
+fn get_unlinked_one_on_one_chats() -> Result<Vec<ChatMeta>, String> {
+    let conn = get_db();
+    let mut stmt = conn.prepare(
+        "SELECT chats.id, COALESCE(profiles.name, chats.name), chats.last_message, chats.timestamp, chats.is_group, chats.zip_path, profiles.photo_path
+         FROM chats LEFT JOIN profiles ON chats.id = profiles.chat_id
+         WHERE chats.is_group = 0 AND chats.contact_id IS NULL
+         ORDER BY chats.last_message_epoch DESC"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(ChatMeta {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            last_message: row.get(2)?,
+            timestamp: row.get(3)?,
+            is_group: row.get::<_, i32>(4)? != 0,
+            zip_path: row.get(5)?,
+            photo_path: row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(rows.flatten().collect())
+}
+
+#[tauri::command]
+fn link_contact_to_chat(contact_id: String, chat_id: String) -> Result<(), String> {
+    let conn = get_db();
+    link_chat_and_contact(&conn, &chat_id, &contact_id)
+}
+
+#[tauri::command]
+fn unlink_contact_from_chat(contact_id: String) -> Result<(), String> {
+    let conn = get_db();
+    conn.execute(
+        "UPDATE chats SET contact_id = NULL WHERE contact_id = ?1",
+        params![&contact_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -6020,7 +6942,11 @@ async fn export_all_chats_zip(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 async fn import_from_export(zip_path: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || import_from_export_inner(zip_path)).await.map_err(|e| e.to_string())?
+    let result = tauri::async_runtime::spawn_blocking(move || import_from_export_inner(zip_path)).await.map_err(|e| e.to_string())?;
+    if result.is_ok() {
+        run_post_import_reconciliation().await;
+    }
+    result
 }
 
 /// Android-only helper: the web frontend reads a ZIP file via <input type="file">
@@ -6041,6 +6967,7 @@ async fn import_zip_from_bytes(b64: String, filename: String) -> Result<Vec<Stri
         .await
         .map_err(|e| e.to_string())??;
     let _ = fs::remove_file(&cache_path);
+    run_post_import_reconciliation().await;
     Ok(result)
 }
 
@@ -6242,6 +7169,8 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                 params![&last_content, &last_timestamp, final_epoch, &existing_id],
             ).map_err(|e| format!("Failed to update chat metadata: {}", e))?;
 
+            link_chat_to_contact_if_match(&conn, &existing_id, is_group);
+
             imported_ids.push(existing_id.clone());
 
             // Apply modifications if present (merge scenario)
@@ -6302,6 +7231,8 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
                 Option::<String>::None
             ],
         ).map_err(|e| format!("Failed to insert chat: {}", e))?;
+
+        link_chat_to_contact_if_match(&conn, &chat_id, is_group);
 
         // Insert messages
         IMPORT_PHASE.store(3, Ordering::Relaxed); // Saving to DB
@@ -6773,6 +7704,32 @@ pub fn run() {
 
             pick_profile_photo,
 
+            get_or_create_contact_for_participant,
+
+            take_pending_auto_links,
+
+            get_contact_profile,
+
+            update_contact_profile,
+
+            remove_contact_photo,
+
+            get_contact_groups,
+
+            remove_contact_group,
+
+            get_linked_participants,
+
+            get_former_members,
+
+            get_unlinked_one_on_one_chats,
+
+            get_linked_chat_for_contact,
+
+            link_contact_to_chat,
+
+            unlink_contact_from_chat,
+
             pick_global_background,
             save_background_from_b64,
             read_file_as_base64,
@@ -7115,10 +8072,12 @@ mod tests {
 
     #[test]
 
-    fn detect_group_chat__two_distinct_senders_returns_true() {
+    fn detect_group_chat__two_distinct_senders_without_indicator_returns_false() {
 
-        // detect_group_chat returns true whenever there are >1 unique non-system senders,
-        // so Alice + Bob (2 senders) is still considered a group chat.
+        // 2 senders with no group-creation/membership system message is indistinguishable
+        // from an ordinary 1-on-1 chat (you + them, both messaging under their real names —
+        // real exports never actually label the account owner "You"), so this must NOT be
+        // classified as a group. Only an explicit indicator, or 3+ senders, should trigger true.
         let msgs = vec![
 
             Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
@@ -7127,7 +8086,7 @@ mod tests {
 
         ];
 
-        assert!(detect_group_chat(&msgs));
+        assert!(!detect_group_chat(&msgs));
 
     }
 

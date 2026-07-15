@@ -4627,6 +4627,18 @@ input, textarea {
 
 }
 
+.system-message.search-match {
+
+  box-shadow: var(--sh-sm);
+
+}
+
+.system-message.jumped {
+
+  animation: highlight-pulse 1.8s ease;
+
+}
+
 
 /* Selected message */
 
@@ -4931,7 +4943,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.dialog-close-btn) {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.dialog-close-btn):not(.group-participant-edit-btn):not(.contact-link-btn) {
 
 
   width: 100%;
@@ -4967,7 +4979,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):hover {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):hover {
 
 
   background: #009688;
@@ -4976,7 +4988,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):disabled {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):disabled {
 
 
   background: var(--wa-border);
@@ -6276,6 +6288,99 @@ input, textarea {
   font-weight: 500;
 
 
+  flex: 1;
+
+
+  overflow: hidden;
+
+
+  text-overflow: ellipsis;
+
+
+  white-space: nowrap;
+
+
+}
+
+
+.group-participant-linked-icon {
+
+
+  font-size: 13px;
+
+
+  flex-shrink: 0;
+
+
+}
+
+
+.former-member-badge {
+
+
+  font-size: 10px;
+
+
+  background: var(--wa-text-secondary);
+
+
+  color: white;
+
+
+  padding: 2px 6px;
+
+
+  border-radius: 4px;
+
+
+  font-weight: 500;
+
+
+  flex-shrink: 0;
+
+
+  white-space: nowrap;
+
+
+}
+
+
+.group-participant-edit-btn {
+
+
+  background: none;
+
+
+  border: none;
+
+
+  cursor: pointer;
+
+
+  font-size: 14px;
+
+
+  padding: 2px 4px;
+
+
+  flex-shrink: 0;
+
+
+  opacity: 0.7;
+
+
+  transition: opacity 0.15s;
+
+
+}
+
+
+.group-participant-edit-btn:hover {
+
+
+  opacity: 1;
+
+
 }
 
 
@@ -6823,6 +6928,135 @@ input, textarea {
 
 
   color: white;
+
+
+}
+
+
+.contact-link-section {
+
+
+  margin: 8px 0 4px;
+
+
+  border-top: 1px solid var(--wa-border);
+
+
+  padding-top: 10px;
+
+
+}
+
+
+.contact-link-row {
+
+
+  display: flex;
+
+
+  align-items: center;
+
+
+  gap: 8px;
+
+
+}
+
+
+.contact-link-status {
+
+
+  font-size: 13px;
+
+
+  color: var(--wa-text-secondary);
+
+
+  flex: 1;
+
+
+}
+
+
+.contact-link-picker {
+
+
+  flex: 1;
+
+
+  padding: 4px 6px;
+
+
+  border-radius: 6px;
+
+
+  border: 1px solid var(--wa-border);
+
+
+  background: var(--wa-receiver-bg);
+
+
+  color: var(--wa-text);
+
+
+  font-size: 13px;
+
+
+}
+
+
+.contact-link-btn {
+
+
+  background: none;
+
+
+  border: 1px solid var(--wa-teal);
+
+
+  color: var(--wa-teal);
+
+
+  font-size: 12px;
+
+
+  padding: 4px 12px;
+
+
+  border-radius: 12px;
+
+
+  cursor: pointer;
+
+
+  flex-shrink: 0;
+
+
+  transition: background 0.15s, color 0.15s;
+
+
+}
+
+
+.contact-link-btn:hover:not(:disabled) {
+
+
+  background: var(--wa-teal);
+
+
+  color: white;
+
+
+}
+
+
+.contact-link-btn:disabled {
+
+
+  opacity: 0.5;
+
+
+  cursor: not-allowed;
 
 
 }

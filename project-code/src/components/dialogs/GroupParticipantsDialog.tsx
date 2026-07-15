@@ -11,6 +11,9 @@ interface GroupParticipantsDialogProps {
   onPhotoClick: (base64Data: string) => void;
   onPhotoRemove: () => void;
   onSave: () => void;
+  linkedParticipants?: Set<string>;
+  onEditParticipant?: (name: string) => void;
+  formerMembers?: Set<string>;
 }
 
 export function GroupParticipantsDialog({
@@ -21,7 +24,10 @@ export function GroupParticipantsDialog({
   onCancel,
   onPhotoClick,
   onPhotoRemove,
-  onSave
+  onSave,
+  linkedParticipants,
+  onEditParticipant,
+  formerMembers,
 }: GroupParticipantsDialogProps) {
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
 
@@ -75,6 +81,22 @@ export function GroupParticipantsDialog({
             <div key={name} className="group-participant-item">
               <div className="group-participant-avatar">{getInitials(name)}</div>
               <span className="group-participant-name">{name}</span>
+              {formerMembers?.has(name) && (
+                <span className="former-member-badge" title="No longer in this group">Former member</span>
+              )}
+              {linkedParticipants?.has(name) && (
+                <span className="group-participant-linked-icon" title="Linked to a 1-on-1 chat">🔗</span>
+              )}
+              {onEditParticipant && (
+                <button
+                  type="button"
+                  className="group-participant-edit-btn"
+                  title="Edit profile"
+                  onClick={() => onEditParticipant(name)}
+                >
+                  ✏️
+                </button>
+              )}
             </div>
           ))}
         </div>

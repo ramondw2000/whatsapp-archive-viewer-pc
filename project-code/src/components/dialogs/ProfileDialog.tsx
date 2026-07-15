@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { parsePhoneNumber, formatPhoneNumber, validatePhoneInput, getPlaceholder, phoneOptions } from "../../utils/phoneNumber";
-import type { NameHistoryEntry } from "../../types";
+import type { NameHistoryEntry, ChatMeta } from "../../types";
 
 interface ProfileDialogProps {
   chatName: string;
@@ -22,6 +22,14 @@ interface ProfileDialogProps {
   onResetName: () => void;
   onPhotoClick: (base64Data: string) => void;
   onPhotoRemove: () => void;
+  linkedGroups?: ChatMeta[];
+  onRemoveGroup?: (chatId: string) => void;
+  contactLinked?: boolean;
+  linkedChatName?: string | null;
+  unlinkedChats?: ChatMeta[];
+  onLinkToChat?: (chatId: string) => void;
+  onUnlink?: () => void;
+  startInEditMode?: boolean;
 }
 
 export function ProfileDialog({
@@ -43,9 +51,19 @@ export function ProfileDialog({
   onResetName,
   onPhotoClick,
   onPhotoRemove,
+  linkedGroups,
+  onRemoveGroup,
+  contactLinked,
+  linkedChatName,
+  unlinkedChats,
+  onLinkToChat,
+  onUnlink,
+  startInEditMode,
 }: ProfileDialogProps) {
   const [showHistory, setShowHistory] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [showGroups, setShowGroups] = useState(true);
+  const [selectedLinkChatId, setSelectedLinkChatId] = useState("");
+  const [isEditing, setIsEditing] = useState(!!startInEditMode);
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
 
   // Parse current phone for editing
@@ -230,6 +248,78 @@ export function ProfileDialog({
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+        {linkedGroups !== undefined && (
+          <div className="name-history-section">
+            <button
+              type="button"
+              className="name-history-toggle"
+              onClick={() => setShowGroups(v => !v)}
+            >
+              {showGroups ? "▾" : "▸"} Linked groups ({linkedGroups.length})
+            </button>
+            {showGroups && (
+              <div className="name-history-list">
+                {linkedGroups.length === 0 ? (
+                  <div className="name-history-item">
+                    <span className="name-history-name">Not linked to any group yet</span>
+                  </div>
+                ) : linkedGroups.map(group => (
+                  <div key={group.id} className="name-history-item">
+                    <div className="name-history-item-info">
+                      <span className="name-history-name">{group.name}</span>
+                    </div>
+                    {isEditing && onRemoveGroup && (
+                      <button
+                        type="button"
+                        className="name-history-restore"
+                        onClick={() => onRemoveGroup(group.id)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {isEditing && onUnlink && (
+          <div className="contact-link-section">
+            {contactLinked ? (
+              <div className="contact-link-row">
+                <span className="contact-link-status">
+                  {linkedChatName ? `Linked to: ${linkedChatName}` : "Linked to your 1-on-1 chat with this person"}
+                </span>
+                <button type="button" className="contact-link-btn" onClick={onUnlink}>
+                  Unlink
+                </button>
+              </div>
+            ) : (
+              unlinkedChats && onLinkToChat && (
+                <div className="contact-link-row">
+                  <select
+                    className="contact-link-picker"
+                    value={selectedLinkChatId}
+                    onChange={(e) => setSelectedLinkChatId(e.target.value)}
+                  >
+                    <option value="" disabled>Link to existing chat...</option>
+                    {unlinkedChats.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="contact-link-btn"
+                    disabled={!selectedLinkChatId}
+                    onClick={() => { if (selectedLinkChatId) { onLinkToChat(selectedLinkChatId); setSelectedLinkChatId(""); } }}
+                  >
+                    Link
+                  </button>
+                </div>
+              )
             )}
           </div>
         )}

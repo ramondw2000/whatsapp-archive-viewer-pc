@@ -53,6 +53,25 @@ export interface Profile {
   photo_path: string | null;
   phone_number: string | null;
   original_name: string | null;
+  contact_id: string | null;
+}
+
+export interface Contact {
+  id: string;
+  normalized_key: string;
+  display_key: string;
+  name: string | null;
+  notes: string | null;
+  photo_path: string | null;
+  phone_number: string | null;
+}
+
+export interface AutoLinkEvent {
+  contact_id: string;
+  contact_name: string;
+  chat_id: string;
+  chat_name: string;
+  via_group: string | null;
 }
 
 export interface NameHistoryEntry {
