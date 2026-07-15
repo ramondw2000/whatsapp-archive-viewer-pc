@@ -28,6 +28,7 @@ local.config.ts
 
 # Debug artifacts
 parse-debug.txt
+build-log.txt
 
 # Runtime data files (generated at app startup)
 src-tauri/chats.db
