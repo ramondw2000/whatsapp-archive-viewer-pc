@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One đã tạo nhóm "Test Group VI"
+10/07/2026, 09:05 - Test Person Two: Chào mọi người!
+10/07/2026, 09:07 - Test Person Three: Mọi người khỏe không?
+10/07/2026, 09:10 - Test Person One: Chào buổi sáng!
+11/07/2026, 10:00 - Test Person One đã thêm Test Person Four vào nhóm
+11/07/2026, 10:05 - Test Person Four: Rất vui khi được ở đây!
+12/07/2026, 11:00 - Test Person Two đã bỏ Test Person Five khỏi nhóm
+12/07/2026, 11:05 - Test Person Three đã rời nhóm
+13/07/2026, 12:00 - Test Person One đã đổi tên nhóm thành "Test Group VI Updated"

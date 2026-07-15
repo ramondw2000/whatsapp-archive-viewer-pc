@@ -1,0 +1,8 @@
+10/07/2026, 09:00 - Test Person One vytvoril skupinu "Test Group SK"
+10/07/2026, 09:05 - Test Person Two: Ahoj všetci!
+10/07/2026, 09:07 - Test Person Three: Ako sa máte?
+10/07/2026, 09:10 - Test Person One: Dobré ráno!
+11/07/2026, 10:00 - Test Person One pridal/a používateľa Test Person Four.
+11/07/2026, 10:05 - Test Person Four: Teší ma, že som tu!
+12/07/2026, 11:00 - Test Person Two odobral/a používateľa Test Person Five.
+12/07/2026, 11:05 - Test Person Three odišiel/a

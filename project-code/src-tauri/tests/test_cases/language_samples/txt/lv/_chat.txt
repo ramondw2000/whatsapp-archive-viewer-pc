@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One izveidoja grupu "Test Group LV"
+10/07/2026, 09:05 - Test Person Two: Sveiki visi!
+10/07/2026, 09:07 - Test Person Three: Kā jums klājas?
+10/07/2026, 09:10 - Test Person One: Labrīt!
+11/07/2026, 10:00 - Test Person One pievienoja Test Person Four
+11/07/2026, 10:05 - Test Person Four: Priecājos būt šeit!
+12/07/2026, 11:00 - Test Person Two noņēma Test Person Five
+12/07/2026, 11:05 - Test Person Three aizgāja
+13/07/2026, 12:00 - Test Person One nomainīja tematu uz "Test Group LV Updated"

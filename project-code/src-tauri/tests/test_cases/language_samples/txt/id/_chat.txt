@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One membuat grup "Test Group ID"
+10/07/2026, 09:05 - Test Person Two: Halo semua!
+10/07/2026, 09:07 - Test Person Three: Apa kabar?
+10/07/2026, 09:10 - Test Person One: Selamat pagi!
+11/07/2026, 10:00 - Test Person One menambahkan Test Person Four
+11/07/2026, 10:05 - Test Person Four: Senang bisa di sini!
+12/07/2026, 11:00 - Test Person Two mengeluarkan Test Person Five
+12/07/2026, 11:05 - Test Person Three keluar
+13/07/2026, 12:00 - Test Person One mengubah subjek menjadi "Test Group ID Updated"

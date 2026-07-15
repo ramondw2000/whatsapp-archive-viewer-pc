@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One vytvořil skupinu "Test Group CS"
+10/07/2026, 09:05 - Test Person Two: Ahoj všichni!
+10/07/2026, 09:07 - Test Person Three: Jak se máte?
+10/07/2026, 09:10 - Test Person One: Dobré ráno!
+11/07/2026, 10:00 - Test Person One přidal/a uživatele Test Person Four.
+11/07/2026, 10:05 - Test Person Four: Rád/a jsem tady!
+12/07/2026, 11:00 - Test Person Two odebral(a) uživatele Test Person Five.
+12/07/2026, 11:05 - Test Person Three odešel/a
+13/07/2026, 12:00 - Test Person One změnil téma na "Test Group CS Updated"

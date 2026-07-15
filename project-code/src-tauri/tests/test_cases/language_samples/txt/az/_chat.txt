@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One "Test Group AZ" qrupunu yaratdı
+10/07/2026, 09:05 - Test Person Two: Salam həryə !
+10/07/2026, 09:07 - Test Person Three: Necesiz?
+10/07/2026, 09:10 - Test Person One: Sabahınız xeyir!
+11/07/2026, 10:00 - Test Person One qrupa üzv əlavə etdi: Test Person Four
+11/07/2026, 10:05 - Test Person Four: Burada olmaq gözəldir!
+12/07/2026, 11:00 - Test Person Five Test Person Two tərəfindən çıxarıldı
+12/07/2026, 11:05 - Test Person Three tərk etdi
+13/07/2026, 12:00 - "Test Group AZ Updated" mövzusu ilə əvəzlənmişdir

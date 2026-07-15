@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One hat die Gruppe erstellt "Test Group DE"
+10/07/2026, 09:05 - Test Person Two: Hallo zusammen!
+10/07/2026, 09:07 - Test Person Three: Wie geht es allen?
+10/07/2026, 09:10 - Test Person One: Guten Morgen!
+11/07/2026, 10:00 - Test Person One hat Test Person Four hinzugefügt
+11/07/2026, 10:05 - Test Person Four: Schön, hier zu sein!
+12/07/2026, 11:00 - Test Person Two hat Test Person Five entfernt
+12/07/2026, 11:05 - Test Person Three hat die Gruppe verlassen
+13/07/2026, 12:00 - Test Person One hat das Gruppenthema zu "Test Group DE Updated" geändert

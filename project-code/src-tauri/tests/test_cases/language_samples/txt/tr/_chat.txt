@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One "Test Group TR" grubunu oluşturdu
+10/07/2026, 09:05 - Test Person Two: Herkese merhaba!
+10/07/2026, 09:07 - Test Person Three: Nasılsınız?
+10/07/2026, 09:10 - Test Person One: Günaydın!
+11/07/2026, 10:00 - Test Person One, Test Person Four kişisini ekledi
+11/07/2026, 10:05 - Test Person Four: Burada olmaktan mutluyum!
+12/07/2026, 11:00 - Test Person Two, Test Person Five kişisini çıkardı
+12/07/2026, 11:05 - Test Person Three ayrıldı
+13/07/2026, 12:00 - Test Person One konuyu "Test Group TR Updated" olarak değiştirdi

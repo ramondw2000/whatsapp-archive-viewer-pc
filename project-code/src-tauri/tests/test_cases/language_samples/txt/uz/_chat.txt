@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One "Test Group UZ" guruhini yaratdi
+10/07/2026, 09:05 - Test Person Two: Salom hammaga!
+10/07/2026, 09:07 - Test Person Three: Qalaysizlar?
+10/07/2026, 09:10 - Test Person One: Xayrli tong!
+11/07/2026, 10:00 - TestPersonOne Test Person Fourni qo‘shdi
+11/07/2026, 10:05 - Test Person Four: Bu yerda bo‘lganimdan xursandman!
+12/07/2026, 11:00 - TestPersonTwo Test Person Fiveni o‘chirdi
+12/07/2026, 11:05 - Test Person Three tark etdi
+13/07/2026, 12:00 - Test Person One mavzuni "Test Group UZ Updated" ga o‘zgartirdi

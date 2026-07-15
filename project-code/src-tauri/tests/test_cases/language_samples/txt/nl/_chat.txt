@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One heeft de groep aangemaakt "Test Group NL"
+10/07/2026, 09:05 - Test Person Two: Hallo allemaal!
+10/07/2026, 09:07 - Test Person Three: Hoe gaat het met iedereen?
+10/07/2026, 09:10 - Test Person One: Goedemorgen!
+11/07/2026, 10:00 - Test Person One heeft Test Person Four toegevoegd
+11/07/2026, 10:05 - Test Person Four: Leuk om erbij te zijn!
+12/07/2026, 11:00 - Test Person Two heeft Test Person Five verwijderd
+12/07/2026, 11:05 - Test Person Three heeft de groep verlaten
+13/07/2026, 12:00 - Test Person One heeft de groepsnaam gewijzigd in "Test Group NL Updated"

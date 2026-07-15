@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One loi ryhmän "Test Group FI"
+10/07/2026, 09:05 - Test Person Two: Hei kaikille!
+10/07/2026, 09:07 - Test Person Three: Mitä kuuluu?
+10/07/2026, 09:10 - Test Person One: Huomenta!
+11/07/2026, 10:00 - Test Person One lisäsi henkilön Test Person Four
+11/07/2026, 10:05 - Test Person Four: Kiva olla täällä!
+12/07/2026, 11:00 - Test Person Two poisti henkilön Test Person Five
+12/07/2026, 11:05 - Test Person Three poistui
+13/07/2026, 12:00 - Test Person One vaihtoi aiheeksi "Test Group FI Updated"

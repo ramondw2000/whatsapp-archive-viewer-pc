@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One ha creato il gruppo "Test Group IT"
+10/07/2026, 09:05 - Test Person Two: Ciao a tutti!
+10/07/2026, 09:07 - Test Person Three: Come state?
+10/07/2026, 09:10 - Test Person One: Buongiorno!
+11/07/2026, 10:00 - Test Person One ha aggiunto Test Person Four
+11/07/2026, 10:05 - Test Person Four: Felice di essere qui!
+12/07/2026, 11:00 - Test Person Two ha rimosso Test Person Five
+12/07/2026, 11:05 - Test Person Three ha abbandonato
+13/07/2026, 12:00 - Test Person One ha cambiato l'oggetto in "Test Group IT Updated"

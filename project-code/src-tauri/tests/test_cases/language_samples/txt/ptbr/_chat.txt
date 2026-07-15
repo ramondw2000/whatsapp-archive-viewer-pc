@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One criou o grupo "Test Group PTBR"
+10/07/2026, 09:05 - Test Person Two: Oi pessoal!
+10/07/2026, 09:07 - Test Person Three: Como vocês estão?
+10/07/2026, 09:10 - Test Person One: Bom dia!
+11/07/2026, 10:00 - Test Person One adicionou Test Person Four
+11/07/2026, 10:05 - Test Person Four: Feliz em estar aqui!
+12/07/2026, 11:00 - Test Person Two removeu Test Person Five
+12/07/2026, 11:05 - Test Person Three saiu
+13/07/2026, 12:00 - Test Person One alterou o nome do grupo para "Test Group PTBR Updated"

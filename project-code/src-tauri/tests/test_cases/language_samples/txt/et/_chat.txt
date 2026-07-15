@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One lõi grupi "Test Group ET"
+10/07/2026, 09:05 - Test Person Two: Tere kõigile!
+10/07/2026, 09:07 - Test Person Three: Kuidas läheb?
+10/07/2026, 09:10 - Test Person One: Head hommikut!
+11/07/2026, 10:00 - Test Person One lisas Test Person Four
+11/07/2026, 10:05 - Test Person Four: Hea siin olla!
+12/07/2026, 11:00 - Test Person Two eemaldas Test Person Five
+12/07/2026, 11:05 - Test Person Three lahkus
+13/07/2026, 12:00 - Test Person One seadis teemaks "Test Group ET Updated"

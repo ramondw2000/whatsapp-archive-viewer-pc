@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One creó el grupo "Test Group ES"
+10/07/2026, 09:05 - Test Person Two: ¡Hola a todos!
+10/07/2026, 09:07 - Test Person Three: ¿Cómo están?
+10/07/2026, 09:10 - Test Person One: ¡Buenos días!
+11/07/2026, 10:00 - Test Person One añadió a Test Person Four
+11/07/2026, 10:05 - Test Person Four: ¡Feliz de estar aquí!
+12/07/2026, 11:00 - Test Person Two eliminó a Test Person Five
+12/07/2026, 11:05 - Test Person Three salió
+13/07/2026, 12:00 - Test Person One cambió el asunto a "Test Group ES Updated"

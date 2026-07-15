@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One je stvorio grupu "Test Group HR"
+10/07/2026, 09:05 - Test Person Two: Bok svima!
+10/07/2026, 09:07 - Test Person Three: Kako ste?
+10/07/2026, 09:10 - Test Person One: Dobro jutro!
+11/07/2026, 10:00 - Test Person One dodao/la Test Person Four
+11/07/2026, 10:05 - Test Person Four: Drago mi je biti ovdje!
+12/07/2026, 11:00 - Test Person Two je uklonio Test Person Five
+12/07/2026, 11:05 - Test Person Three izašao
+13/07/2026, 12:00 - Test Person One je promijenio temu u "Test Group HR Updated"

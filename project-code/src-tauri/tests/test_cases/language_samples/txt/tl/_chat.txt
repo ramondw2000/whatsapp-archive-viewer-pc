@@ -1,0 +1,8 @@
+10/07/2026, 09:00 - Test Person One binuo ang grupong "Test Group TL"
+10/07/2026, 09:05 - Test Person Two: Kumusta lahat!
+10/07/2026, 09:07 - Test Person Three: Kamusta kayo?
+10/07/2026, 09:10 - Test Person One: Magandang umaga!
+11/07/2026, 10:00 - Test Person One nakapasok Test Person Four
+11/07/2026, 10:05 - Test Person Four: Masaya akong nandito!
+12/07/2026, 11:00 - Inalis ni Test Person Two si Test Person Five
+12/07/2026, 11:05 - Umalis si Test Person Three

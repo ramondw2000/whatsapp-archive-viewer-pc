@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One a créé le groupe "Test Group FR"
+10/07/2026, 09:05 - Test Person Two: Salut tout le monde !
+10/07/2026, 09:07 - Test Person Three: Comment ça va ?
+10/07/2026, 09:10 - Test Person One: Bonjour !
+11/07/2026, 10:00 - Test Person One a ajouté Test Person Four
+11/07/2026, 10:05 - Test Person Four: Content d'être ici !
+12/07/2026, 11:00 - Test Person Two a retiré Test Person Five
+12/07/2026, 11:05 - Test Person Three est parti
+13/07/2026, 12:00 - Test Person One a changé le sujet en "Test Group FR Updated"

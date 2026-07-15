@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One oprettede gruppen "Test Group DA"
+10/07/2026, 09:05 - Test Person Two: Hej allesammen!
+10/07/2026, 09:07 - Test Person Three: Hvordan går det?
+10/07/2026, 09:10 - Test Person One: Godmorgen!
+11/07/2026, 10:00 - Test Person One tilføjede Test Person Four
+11/07/2026, 10:05 - Test Person Four: Glad for at være her!
+12/07/2026, 11:00 - Test Person Two fjernede Test Person Five
+12/07/2026, 11:05 - Test Person Three forlod
+13/07/2026, 12:00 - Test Person One ændrede emnet til "Test Group DA Updated"

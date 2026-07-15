@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One a creat grupul "Test Group RO"
+10/07/2026, 09:05 - Test Person Two: Salut tuturor!
+10/07/2026, 09:07 - Test Person Three: Ce mai faceți?
+10/07/2026, 09:10 - Test Person One: Bună dimineata!
+11/07/2026, 10:00 - Test Person One a adăugat Test Person Four
+11/07/2026, 10:05 - Test Person Four: Mă bucur să fiu aici!
+12/07/2026, 11:00 - Test Person Two a eliminat Test Person Five
+12/07/2026, 11:05 - Test Person Three a ieșit
+13/07/2026, 12:00 - Test Person One a schimbat subiectul în "Test Group RO Updated"

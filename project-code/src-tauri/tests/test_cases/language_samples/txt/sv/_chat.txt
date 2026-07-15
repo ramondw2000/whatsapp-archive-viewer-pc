@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One har skapat grupp "Test Group SV"
+10/07/2026, 09:05 - Test Person Two: Hej allihopa!
+10/07/2026, 09:07 - Test Person Three: Hur mår ni?
+10/07/2026, 09:10 - Test Person One: God morgon!
+11/07/2026, 10:00 - Test Person One lade till Test Person Four
+11/07/2026, 10:05 - Test Person Four: Kul att vara här!
+12/07/2026, 11:00 - Test Person Two tog bort Test Person Five
+12/07/2026, 11:05 - Test Person Three lämnade
+13/07/2026, 12:00 - Test Person One ändrade ämnet till "Test Group SV Updated"

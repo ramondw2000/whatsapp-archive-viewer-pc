@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One created group "Test Group EN"
+10/07/2026, 09:05 - Test Person Two: Hey everyone!
+10/07/2026, 09:07 - Test Person Three: How's it going?
+10/07/2026, 09:10 - Test Person One: Good morning!
+11/07/2026, 10:00 - Test Person One added Test Person Four
+11/07/2026, 10:05 - Test Person Four: Glad to be here!
+12/07/2026, 11:00 - Test Person Two removed Test Person Five
+12/07/2026, 11:05 - Test Person Three left
+13/07/2026, 12:00 - Test Person One changed the subject to "Test Group EN Updated"

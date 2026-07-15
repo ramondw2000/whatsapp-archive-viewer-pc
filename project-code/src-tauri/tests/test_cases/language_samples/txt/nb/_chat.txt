@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One laget gruppen "Test Group NB"
+10/07/2026, 09:05 - Test Person Two: Hei alle sammen!
+10/07/2026, 09:07 - Test Person Three: Hvordan går det?
+10/07/2026, 09:10 - Test Person One: God morgen!
+11/07/2026, 10:00 - Test Person One la til Test Person Four
+11/07/2026, 10:05 - Test Person Four: Hyggelig å være her!
+12/07/2026, 11:00 - Test Person Two fjernet Test Person Five
+12/07/2026, 11:05 - Test Person Three forlot gruppen
+13/07/2026, 12:00 - Test Person One endret emnet til "Test Group NB Updated"

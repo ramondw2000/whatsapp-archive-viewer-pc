@@ -28,6 +28,159 @@ static MEMBERSHIP_RE_EN_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
 static MEMBERSHIP_RE_EN_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
 static MEMBERSHIP_RE_EN_WAS_ADDED: OnceLock<regex::Regex> = OnceLock::new();
 static MEMBERSHIP_RE_EN_WAS_REMOVED: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FR_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FR_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FR_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FR_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FR_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+// The following are all best-effort, sourced from a decompiled WhatsApp APK's
+// values-XX/strings.xml (https://github.com/GigaDroid/Decompiled-Whatsapp), not verified
+// against real exports. See extract_membership_events doc comment for details.
+static MEMBERSHIP_RE_AZ_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_AZ_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_AZ_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_AZ_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_AZ_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CA_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CA_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CA_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CA_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CA_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CS_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CS_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CS_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CS_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_CS_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DA_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DA_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DA_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DA_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DA_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DE_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DE_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DE_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DE_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_DE_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ES_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ES_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ES_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ES_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ES_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ET_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ET_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ET_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ET_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ET_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FI_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FI_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FI_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FI_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_FI_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HR_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HR_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HR_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HR_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HR_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HU_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HU_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HU_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HU_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_HU_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ID_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ID_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ID_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ID_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_ID_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_IT_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_IT_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_IT_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_IT_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_IT_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LT_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LT_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LT_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LT_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LT_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LV_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LV_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LV_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LV_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_LV_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_MS_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_MS_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_MS_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_MS_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_MS_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_NB_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_NB_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_NB_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_NB_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_NB_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PL_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PL_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PL_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PL_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PL_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PT_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PT_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PT_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PT_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PT_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PTBR_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PTBR_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PTBR_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PTBR_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_PTBR_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_RO_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_RO_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_RO_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_RO_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_RO_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SK_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SK_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SK_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SK_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SK_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SL_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SL_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SL_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SL_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SL_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SQ_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SQ_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SQ_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SQ_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SQ_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SV_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SV_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SV_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SV_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SV_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SW_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SW_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SW_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SW_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_SW_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TL_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TL_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TL_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TL_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TL_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TR_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TR_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TR_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TR_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_TR_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_UZ_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_UZ_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_UZ_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_UZ_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_UZ_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_VI_SELF_LEFT: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_VI_THIRD_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_VI_THIRD_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_VI_YOU_ADD: OnceLock<regex::Regex> = OnceLock::new();
+static MEMBERSHIP_RE_VI_YOU_REMOVE: OnceLock<regex::Regex> = OnceLock::new();
 static MEMBERSHIP_RE_SPLIT_TARGETS: OnceLock<regex::Regex> = OnceLock::new();
 
 // Auto-links established by reconcile_contacts_and_chats since the frontend last drained them
@@ -2251,6 +2404,198 @@ fn detect_group_chat(messages: &[Message]) -> bool {
         // French
         "a créé le groupe",
         "vous a ajouté",
+        "a ajouté",
+        "a retiré",
+        "a changé le sujet",
+        "icône de groupe",
+        "est parti",
+        // Azerbaijani
+        "qrupunu yaratdı",
+        "əlavə etdi",
+        "tərəfindən çıxarıldı",
+        "tərk etdi",
+        "mövzusu ilə əvəzlənmişdir",
+        "qrup təsviri",
+        // Catalan
+        "ha creat el grup",
+        "ha afegit",
+        "ha expulsat",
+        "ha canviat el tema",
+        "icona del grup",
+        "icona de grup",
+        // Czech
+        "vytvořil",
+        "přidal",
+        "odebral",
+        "odešel",
+        "změnil",
+        "ikona skupiny",
+        // Danish
+        "oprettede gruppen",
+        "tilføjede",
+        "fjernede",
+        "forlod",
+        "ændrede emnet",
+        "gruppe ikon",
+        // German (additional)
+        "hat die gruppe verlassen",
+        "gruppenbild",
+        // Spanish (additional)
+        "eliminó",
+        "salió",
+        "cambió el asunto",
+        "icono del grupo",
+        // Estonian
+        "lõi grupi",
+        "lisas",
+        "eemaldas",
+        "lahkus",
+        "seadis teemaks",
+        "grupi ikoon",
+        // Finnish
+        "loi ryhmän",
+        "lisäsi henkilön",
+        "poisti henkilön",
+        "poistui",
+        "vaihtoi aiheeksi",
+        "ryhmän kuvake",
+        // Croatian
+        "stvorio",
+        "dodao",
+        "uklonio",
+        "izašao",
+        "promijenio",
+        "ikona grupe",
+        // Hungarian
+        "létrehozta",
+        "hozzáadta",
+        "eltávolította",
+        "kilépett",
+        "lecserélte a témát",
+        "csoportikon",
+        // Indonesian
+        "membuat grup",
+        "menambahkan",
+        "mengeluarkan",
+        "mengubah subjek",
+        "ikon grup telah",
+        // Italian
+        "ha creato il gruppo",
+        "ha aggiunto",
+        "ha rimosso",
+        "ha abbandonato",
+        "ha cambiato l'oggetto",
+        "immagine del gruppo",
+        // Lithuanian
+        "sukūrė grupę",
+        "pridėjo",
+        "pašalino",
+        "išėjo",
+        "pakeitė temą",
+        "grupės piktograma",
+        // Latvian
+        "izveidoja grupu",
+        "pievienoja",
+        "noņēma",
+        "aizgāja",
+        "nomainīja tematu",
+        "grupas ikona",
+        // Malay
+        "mencipta grup",
+        "telah menambah",
+        "telah membuang",
+        "telah keluar",
+        "ikon grup telah dikemaskini",
+        // Norwegian Bokmal
+        "laget gruppen",
+        "la til",
+        "fjernet",
+        "forlot gruppen",
+        "endret emnet",
+        "gruppeikon",
+        // Polish
+        "utworzył",
+        "dodał",
+        "usunął",
+        "opuścił",
+        "zmienił",
+        "ikonę grupy",
+        "ikona grupy",
+        // Portuguese (Portugal)
+        "criou o grupo",
+        "adicionou",
+        "removeu",
+        "saiu do grupo",
+        "alterou o assunto",
+        "ícone do grupo",
+        // Portuguese (Brazil)
+        "alterou o nome do grupo para",
+        "imagem do grupo",
+        // Romanian
+        "a creat grupul",
+        "a adăugat",
+        "a eliminat",
+        "a ieșit",
+        "a schimbat subiectul",
+        "imaginea grupului",
+        // Slovak
+        "vytvoril",
+        "odobral",
+        "odišiel",
+        // Slovenian
+        "je ustvaril",
+        "je dodal",
+        "je odstranil",
+        "je odšel",
+        "je spremenil temo",
+        "slika skupine",
+        // Albanian
+        "krijoi grupin",
+        "shtoi",
+        "hoqi",
+        "u largua",
+        "ndryshoi titullin",
+        "ikona e grupit",
+        // Swedish
+        "har skapat grupp",
+        "lade till",
+        "tog bort",
+        "lämnade",
+        "ändrade ämnet",
+        "gruppikon",
+        // Swahili
+        "ametengeneza kikundi",
+        "amemuongeza",
+        "amemuondoa",
+        "katoka",
+        "amebadilisha mada",
+        "ikoni ya kikundi",
+        // Tagalog
+        "binuo ang grupong",
+        "idinagdag",
+        "inalis",
+        "umalis",
+        // Turkish
+        "grubunu oluşturdu",
+        "kişisini ekledi",
+        "kişisini çıkardı",
+        "ayrıldı",
+        "olarak değiştirdi",
+        "grup simgesi",
+        // Uzbek
+        "guruhini yaratdi",
+        "qo‘shdi",
+        "o‘chirdi",
+        "tark etdi",
+        "o‘zgartirdi",
+        "guruh rasmi",
+        // Vietnamese
+        "đã tạo nhóm",
+        "đã thêm",
+        "đã bỏ",
+        "đã rời nhóm",
+        "đã đổi tên nhóm thành",
+        "biểu tượng nhóm",
     ];
 
     let has_group_indicator = messages.iter()
@@ -2471,6 +2816,34 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
                 let date_str = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 let time_str = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+                // Azerbaijani's "X əlavə etdi: Y" (added) system message legitimately contains
+                // ": ", so it structurally looks like "Sender: text" to this same pattern and
+                // would otherwise be split into a fake sender/message pair below. Detect it here,
+                // before that split assumption applies, and store it as a system message instead.
+                if sender_candidate.contains(" əlavə etdi") {
+                    in_code_block = false;
+                    after_fence_close = false;
+                    blank_since_close = false;
+                    if let Some(msg) = current_msg.take() {
+                        messages.push(msg);
+                    }
+                    let content_text_candidate = caps.get(4).map(|m| m.as_str()).unwrap_or("");
+                    current_msg = Some(Message {
+                        id: None,
+                        timestamp: format!("{} {}", date_str, time_str),
+                        sender: "System".to_string(),
+                        msg_type: "system".to_string(),
+                        content: format!("{}: {}", sender_candidate, content_text_candidate),
+                        media: None,
+                        duration: None,
+                        tag_ext: None,
+                        display_name: None,
+                        is_favorite: None,
+                    });
+                    matched = true;
+                    break;
+                }
 
                 if !sender_looks_valid || !is_plausible_whatsapp_date(date_str, time_str) || (after_fence_close && blank_since_close) {
                     // Treat as continuation of previous message
@@ -2702,7 +3075,7 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
 
                     // Check if it looks like a system message (no colon before content, or starts with system text)
 
-                    let is_system = !content_text.contains(": ") 
+                    let is_system = !content_text.contains(": ")
 
                         || content_text.starts_with("Messages and calls are end-to-end")
 
@@ -5731,17 +6104,95 @@ enum MembershipEvent {
 fn is_group_attribute_target(target: &str) -> bool {
     let t = target.trim();
     t.starts_with("de groep")
+        || t.starts_with("le groupe")
+        || t.starts_with("la description")
+        || t.starts_with("l'icône")
+        || t.starts_with("la photo")
         || t.eq_ignore_ascii_case("je") // "{actor} heeft je toegevoegd/verwijderd" references "you", not a trackable name
         || t.eq_ignore_ascii_case("you")
+        || t.eq_ignore_ascii_case("vous")
         || t.eq_ignore_ascii_case("the group")
         || t.eq_ignore_ascii_case("this group")
         || t.to_lowercase().starts_with("the group ")
+        // Azerbaijani
+        || t.eq_ignore_ascii_case("səni")
+        || t.to_lowercase().starts_with("qrup")
+        // Catalan
+        || t.to_lowercase().starts_with("el grup")
+        // Czech
+        || t.to_lowercase().starts_with("skupinu")
+        || t.eq_ignore_ascii_case("tě")
+        || t.eq_ignore_ascii_case("vás")
+        // Danish
+        || t.to_lowercase().starts_with("gruppen")
+        || t.eq_ignore_ascii_case("dig")
+        // German
+        || t.to_lowercase().starts_with("die gruppe")
+        || t.eq_ignore_ascii_case("dich")
+        || t.eq_ignore_ascii_case("euch")
+        // Spanish
+        || t.to_lowercase().starts_with("el grupo")
+        || t.eq_ignore_ascii_case("te")
+        // Estonian
+        || t.to_lowercase().starts_with("grupi")
+        || t.eq_ignore_ascii_case("sind")
+        // Finnish
+        || t.to_lowercase().starts_with("ryhmän")
+        || t.eq_ignore_ascii_case("sinut")
+        // Croatian
+        || t.to_lowercase().starts_with("grupu")
+        || t.eq_ignore_ascii_case("tebe")
+        // Hungarian
+        || t.to_lowercase().starts_with("csoport")
+        || t.eq_ignore_ascii_case("téged")
+        // Indonesian / Malay (share "anda")
+        || t.eq_ignore_ascii_case("anda")
+        // Italian
+        || t.to_lowercase().starts_with("il gruppo")
+        // Lithuanian
+        || t.to_lowercase().starts_with("grupę")
+        || t.eq_ignore_ascii_case("tave")
+        // Latvian
+        || t.to_lowercase().starts_with("grupu")
+        || t.eq_ignore_ascii_case("tevi")
+        // Norwegian Bokmal
+        || t.eq_ignore_ascii_case("deg")
+        // Polish
+        || t.eq_ignore_ascii_case("cię")
+        // Portuguese (Portugal + Brazil)
+        || t.to_lowercase().starts_with("este grupo")
+        || t.to_lowercase().starts_with("o grupo")
+        || t.to_lowercase().starts_with("deste grupo")
+        || t.eq_ignore_ascii_case("você")
+        // Romanian
+        || t.to_lowercase().starts_with("grupul")
+        // Slovak
+        || t.eq_ignore_ascii_case("ťa")
+        || t.eq_ignore_ascii_case("teba")
+        // Slovenian
+        || t.to_lowercase().starts_with("skupino")
+        // Albanian
+        || t.to_lowercase().starts_with("grupin")
+        || t.eq_ignore_ascii_case("ty")
+        // Swedish
+        || t.eq_ignore_ascii_case("dig")
+        // Swahili
+        || t.to_lowercase().starts_with("ikoni ya kikundi")
+        // Turkish
+        || t.to_lowercase().starts_with("grubu")
+        || t.eq_ignore_ascii_case("seni")
+        // Uzbek
+        || t.to_lowercase().starts_with("guruh rasmi")
+        // Vietnamese
+        || t.eq_ignore_ascii_case("bạn")
 }
 
 // WhatsApp batches multiple people into one system message: "X heeft Y en Z toegevoegd" or
-// "X heeft Y, Z en W toegevoegd". Split on Dutch/English list separators.
+// "X heeft Y, Z en W toegevoegd" or "X a ajouté Y et Z". Split on list separators across all
+// supported languages (Dutch/English/French verified in spirit; the rest are inferred from each
+// language's ordinary word for "and", not confirmed against a real batched export).
 fn split_membership_targets(targets: &str) -> Vec<String> {
-    let re = MEMBERSHIP_RE_SPLIT_TARGETS.get_or_init(|| regex::Regex::new(r",\s*| en | and ").unwrap());
+    let re = MEMBERSHIP_RE_SPLIT_TARGETS.get_or_init(|| regex::Regex::new(r",\s*| en | and | et | və | i | a | og | und | y | ja | és | dan | e | ir | un | și | in | dhe | och | na | at | ve | va | và ").unwrap());
     re.split(targets)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -5751,7 +6202,9 @@ fn split_membership_targets(targets: &str) -> Vec<String> {
 // Scans a group's system messages (in stored/chronological order) for membership-change events
 // and returns (normalized_name, event) pairs in that same order — the caller keeps only each
 // name's *last* event to know whether they've currently left. Dutch patterns are verified
-// against real exported system messages; English patterns are best-effort (see plan doc).
+// against real exported system messages; English, French, and the ~25 other languages below are
+// best-effort, sourced from a decompiled WhatsApp APK's values-XX/strings.xml resources
+// (https://github.com/GigaDroid/Decompiled-Whatsapp), not verified against real exports.
 fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEvent)> {
     let self_left = MEMBERSHIP_RE_SELF_LEFT.get_or_init(|| regex::Regex::new(r"^(.+) heeft de groep verlaten$").unwrap());
     let third_add = MEMBERSHIP_RE_THIRD_ADD.get_or_init(|| regex::Regex::new(r"^.+? heeft (.+) toegevoegd$").unwrap());
@@ -5763,6 +6216,156 @@ fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEven
     let en_third_remove = MEMBERSHIP_RE_EN_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? removed (.+)$").unwrap());
     let en_was_added = MEMBERSHIP_RE_EN_WAS_ADDED.get_or_init(|| regex::Regex::new(r"(?i)^(.+) was added$").unwrap());
     let en_was_removed = MEMBERSHIP_RE_EN_WAS_REMOVED.get_or_init(|| regex::Regex::new(r"(?i)^(.+) was removed$").unwrap());
+    let fr_self_left = MEMBERSHIP_RE_FR_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) est parti[e]?$").unwrap());
+    let fr_third_add = MEMBERSHIP_RE_FR_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? a ajouté (.+)$").unwrap());
+    let fr_third_remove = MEMBERSHIP_RE_FR_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? a retiré (.+)$").unwrap());
+    let fr_you_add = MEMBERSHIP_RE_FR_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Vous avez ajouté (.+)$").unwrap());
+    let fr_you_remove = MEMBERSHIP_RE_FR_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Vous avez retiré (.+)$").unwrap());
+    let az_self_left = MEMBERSHIP_RE_AZ_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) tərk etdi$").unwrap());
+    let az_third_add = MEMBERSHIP_RE_AZ_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? əlavə etdi: (.+)$").unwrap());
+    let az_third_remove = MEMBERSHIP_RE_AZ_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^(.+) .+? tərəfindən çıxarıldı$").unwrap());
+    let az_you_add = MEMBERSHIP_RE_AZ_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^(.+) qrupa əlavə etdiniz$").unwrap());
+    let az_you_remove = MEMBERSHIP_RE_AZ_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^(.+) sizin tərəfinizdən silindi$").unwrap());
+    let ca_self_left = MEMBERSHIP_RE_CA_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) marxa$").unwrap());
+    let ca_third_add = MEMBERSHIP_RE_CA_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? ha afegit (.+)$").unwrap());
+    let ca_third_remove = MEMBERSHIP_RE_CA_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? ha expulsat a (.+)$").unwrap());
+    let ca_you_add = MEMBERSHIP_RE_CA_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Has afegit a (.+)$").unwrap());
+    let ca_you_remove = MEMBERSHIP_RE_CA_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Has esborrat a (.+)$").unwrap());
+    let cs_self_left = MEMBERSHIP_RE_CS_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) odešel/a$").unwrap());
+    let cs_third_add = MEMBERSHIP_RE_CS_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? přidal/a uživatele (.+)\.$").unwrap());
+    let cs_third_remove = MEMBERSHIP_RE_CS_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? odebral\(a\) uživatele (.+)\.$").unwrap());
+    let cs_you_add = MEMBERSHIP_RE_CS_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Přidal/a jste uživatele (.+)\.$").unwrap());
+    let cs_you_remove = MEMBERSHIP_RE_CS_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Odebrali jste uživatele (.+)\.$").unwrap());
+    let da_self_left = MEMBERSHIP_RE_DA_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) forlod$").unwrap());
+    let da_third_add = MEMBERSHIP_RE_DA_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? tilføjede (.+)$").unwrap());
+    let da_third_remove = MEMBERSHIP_RE_DA_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? fjernede (.+)$").unwrap());
+    let da_you_add = MEMBERSHIP_RE_DA_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Du tilføjede (.+)$").unwrap());
+    let da_you_remove = MEMBERSHIP_RE_DA_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Du fjernede (.+)$").unwrap());
+    let de_self_left = MEMBERSHIP_RE_DE_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) hat die Gruppe verlassen$").unwrap());
+    let de_third_add = MEMBERSHIP_RE_DE_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? hat (.+) hinzugefügt$").unwrap());
+    let de_third_remove = MEMBERSHIP_RE_DE_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? hat (.+) entfernt$").unwrap());
+    let de_you_add = MEMBERSHIP_RE_DE_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Du hast (.+) hinzugefügt$").unwrap());
+    let de_you_remove = MEMBERSHIP_RE_DE_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Du hast (.+) entfernt$").unwrap());
+    let es_self_left = MEMBERSHIP_RE_ES_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) salió$").unwrap());
+    let es_third_add = MEMBERSHIP_RE_ES_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? añadió a (.+)$").unwrap());
+    let es_third_remove = MEMBERSHIP_RE_ES_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? eliminó a (.+)$").unwrap());
+    let es_you_add = MEMBERSHIP_RE_ES_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Añadiste a (.+)$").unwrap());
+    let es_you_remove = MEMBERSHIP_RE_ES_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Eliminaste a (.+)$").unwrap());
+    let et_self_left = MEMBERSHIP_RE_ET_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) lahkus$").unwrap());
+    let et_third_add = MEMBERSHIP_RE_ET_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? lisas (.+)$").unwrap());
+    let et_third_remove = MEMBERSHIP_RE_ET_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? eemaldas (.+)$").unwrap());
+    let et_you_add = MEMBERSHIP_RE_ET_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^(.+) lisatud sinu poolt$").unwrap());
+    let et_you_remove = MEMBERSHIP_RE_ET_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^(.+) eemaldatud sinu poolt$").unwrap());
+    let fi_self_left = MEMBERSHIP_RE_FI_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) poistui$").unwrap());
+    let fi_third_add = MEMBERSHIP_RE_FI_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? lisäsi henkilön (.+)$").unwrap());
+    let fi_third_remove = MEMBERSHIP_RE_FI_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? poisti henkilön (.+)$").unwrap());
+    let fi_you_add = MEMBERSHIP_RE_FI_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Lisäsit henkilön (.+)$").unwrap());
+    let fi_you_remove = MEMBERSHIP_RE_FI_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Poistit henkilön (.+)$").unwrap());
+    let hr_self_left = MEMBERSHIP_RE_HR_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) izašao$").unwrap());
+    let hr_third_add = MEMBERSHIP_RE_HR_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? dodao/la (.+)$").unwrap());
+    let hr_third_remove = MEMBERSHIP_RE_HR_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? je uklonio (.+)$").unwrap());
+    let hr_you_add = MEMBERSHIP_RE_HR_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Dodali ste (.+)$").unwrap());
+    let hr_you_remove = MEMBERSHIP_RE_HR_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Uklonili ste (.+)$").unwrap());
+    let hu_self_left = MEMBERSHIP_RE_HU_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) kilépett$").unwrap());
+    let hu_third_add = MEMBERSHIP_RE_HU_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? hozzáadta (.+)$").unwrap());
+    let hu_third_remove = MEMBERSHIP_RE_HU_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? eltávolította (.+)$").unwrap());
+    let hu_you_add = MEMBERSHIP_RE_HU_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^(.+) hozzáadva$").unwrap());
+    let hu_you_remove = MEMBERSHIP_RE_HU_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Eltávolítottad őt: (.+)$").unwrap());
+    let id_self_left = MEMBERSHIP_RE_ID_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) keluar$").unwrap());
+    let id_third_add = MEMBERSHIP_RE_ID_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? menambahkan (.+)$").unwrap());
+    let id_third_remove = MEMBERSHIP_RE_ID_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? mengeluarkan (.+)$").unwrap());
+    let id_you_add = MEMBERSHIP_RE_ID_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Anda menambahkan (.+)$").unwrap());
+    let id_you_remove = MEMBERSHIP_RE_ID_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Anda mengeluarkan (.+)$").unwrap());
+    let it_self_left = MEMBERSHIP_RE_IT_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) ha abbandonato$").unwrap());
+    let it_third_add = MEMBERSHIP_RE_IT_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? ha aggiunto (.+)$").unwrap());
+    let it_third_remove = MEMBERSHIP_RE_IT_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? ha rimosso (.+)$").unwrap());
+    let it_you_add = MEMBERSHIP_RE_IT_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Hai aggiunto (.+)$").unwrap());
+    let it_you_remove = MEMBERSHIP_RE_IT_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Hai rimosso (.+)$").unwrap());
+    let lt_self_left = MEMBERSHIP_RE_LT_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) išėjo$").unwrap());
+    let lt_third_add = MEMBERSHIP_RE_LT_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? pridėjo (.+)$").unwrap());
+    let lt_third_remove = MEMBERSHIP_RE_LT_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? pašalino (.+)$").unwrap());
+    let lt_you_add = MEMBERSHIP_RE_LT_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Jūs pridėjote (.+)$").unwrap());
+    let lt_you_remove = MEMBERSHIP_RE_LT_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Jūs pašalinote (.+)$").unwrap());
+    let lv_self_left = MEMBERSHIP_RE_LV_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) aizgāja$").unwrap());
+    let lv_third_add = MEMBERSHIP_RE_LV_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? pievienoja (.+)$").unwrap());
+    let lv_third_remove = MEMBERSHIP_RE_LV_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? noņēma (.+)$").unwrap());
+    let lv_you_add = MEMBERSHIP_RE_LV_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Pievienojāt (.+)$").unwrap());
+    let lv_you_remove = MEMBERSHIP_RE_LV_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Jūs noņēmāt (.+)$").unwrap());
+    let ms_self_left = MEMBERSHIP_RE_MS_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) keluar$").unwrap());
+    let ms_third_add = MEMBERSHIP_RE_MS_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? telah menambah (.+)$").unwrap());
+    let ms_third_remove = MEMBERSHIP_RE_MS_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? telah membuang (.+)$").unwrap());
+    let ms_you_add = MEMBERSHIP_RE_MS_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Anda telah menambah (.+)$").unwrap());
+    let ms_you_remove = MEMBERSHIP_RE_MS_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Anda telah membuang (.+)$").unwrap());
+    let nb_self_left = MEMBERSHIP_RE_NB_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) forlot gruppen$").unwrap());
+    let nb_third_add = MEMBERSHIP_RE_NB_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? la til (.+)$").unwrap());
+    let nb_third_remove = MEMBERSHIP_RE_NB_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? fjernet (.+)$").unwrap());
+    let nb_you_add = MEMBERSHIP_RE_NB_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Du la til (.+)$").unwrap());
+    let nb_you_remove = MEMBERSHIP_RE_NB_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Du fjernet (.+)$").unwrap());
+    let pl_self_left = MEMBERSHIP_RE_PL_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) opuścił\(a\)$").unwrap());
+    let pl_third_add = MEMBERSHIP_RE_PL_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? dodał\(a\) (.+)$").unwrap());
+    let pl_third_remove = MEMBERSHIP_RE_PL_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? usunął\(ęła\) (.+)$").unwrap());
+    let pl_you_add = MEMBERSHIP_RE_PL_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Dodałeś\(aś\) (.+)$").unwrap());
+    let pl_you_remove = MEMBERSHIP_RE_PL_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Usunąłeś\(ęłaś\) (.+)$").unwrap());
+    let pt_self_left = MEMBERSHIP_RE_PT_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) saiu do grupo$").unwrap());
+    let pt_third_add = MEMBERSHIP_RE_PT_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? adicionou (.+) a este grupo$").unwrap());
+    let pt_third_remove = MEMBERSHIP_RE_PT_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? removeu (.+) deste grupo$").unwrap());
+    let pt_you_add = MEMBERSHIP_RE_PT_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Adicionou (.+) a este grupo$").unwrap());
+    let pt_you_remove = MEMBERSHIP_RE_PT_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Removeu (.+) deste grupo$").unwrap());
+    let ptbr_self_left = MEMBERSHIP_RE_PTBR_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) saiu$").unwrap());
+    let ptbr_third_add = MEMBERSHIP_RE_PTBR_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? adicionou (.+)$").unwrap());
+    let ptbr_third_remove = MEMBERSHIP_RE_PTBR_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? removeu (.+)$").unwrap());
+    let ptbr_you_add = MEMBERSHIP_RE_PTBR_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Você adicionou (.+)$").unwrap());
+    let ptbr_you_remove = MEMBERSHIP_RE_PTBR_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Você removeu (.+)$").unwrap());
+    let ro_self_left = MEMBERSHIP_RE_RO_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) a ieșit$").unwrap());
+    let ro_third_add = MEMBERSHIP_RE_RO_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? a adăugat (.+)$").unwrap());
+    let ro_third_remove = MEMBERSHIP_RE_RO_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? a eliminat (.+)$").unwrap());
+    let ro_you_add = MEMBERSHIP_RE_RO_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Ați adăugat pe (.+)$").unwrap());
+    let ro_you_remove = MEMBERSHIP_RE_RO_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Ați eliminat pe (.+)$").unwrap());
+    let sk_self_left = MEMBERSHIP_RE_SK_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) odišiel/a$").unwrap());
+    let sk_third_add = MEMBERSHIP_RE_SK_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? pridal/a používateľa (.+)\.$").unwrap());
+    let sk_third_remove = MEMBERSHIP_RE_SK_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? odobral/a používateľa (.+)\.$").unwrap());
+    let sk_you_add = MEMBERSHIP_RE_SK_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Pridali ste používateľa (.+)\.$").unwrap());
+    let sk_you_remove = MEMBERSHIP_RE_SK_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Odobrali ste používateľa (.+)$").unwrap());
+    let sl_self_left = MEMBERSHIP_RE_SL_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) je odšel/a$").unwrap());
+    let sl_third_add = MEMBERSHIP_RE_SL_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? je dodal/a (.+)$").unwrap());
+    let sl_third_remove = MEMBERSHIP_RE_SL_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? je odstranil/a (.+)$").unwrap());
+    let sl_you_add = MEMBERSHIP_RE_SL_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Dodali ste (.+)$").unwrap());
+    let sl_you_remove = MEMBERSHIP_RE_SL_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Odstranili ste (.+)$").unwrap());
+    let sq_self_left = MEMBERSHIP_RE_SQ_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) u largua$").unwrap());
+    let sq_third_add = MEMBERSHIP_RE_SQ_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? shtoi (.+)$").unwrap());
+    let sq_third_remove = MEMBERSHIP_RE_SQ_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? hoqi (.+)$").unwrap());
+    let sq_you_add = MEMBERSHIP_RE_SQ_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Ti ke shtuar (.+)$").unwrap());
+    let sq_you_remove = MEMBERSHIP_RE_SQ_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Keni hequr (.+)$").unwrap());
+    let sv_self_left = MEMBERSHIP_RE_SV_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) lämnade$").unwrap());
+    let sv_third_add = MEMBERSHIP_RE_SV_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? lade till (.+)$").unwrap());
+    let sv_third_remove = MEMBERSHIP_RE_SV_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? tog bort (.+)$").unwrap());
+    let sv_you_add = MEMBERSHIP_RE_SV_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Du lade till (.+)$").unwrap());
+    let sv_you_remove = MEMBERSHIP_RE_SV_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Du tog bort (.+)$").unwrap());
+    let sw_self_left = MEMBERSHIP_RE_SW_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) katoka$").unwrap());
+    let sw_third_add = MEMBERSHIP_RE_SW_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? amemuongeza (.+)$").unwrap());
+    let sw_third_remove = MEMBERSHIP_RE_SW_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? amemuondoa (.+)$").unwrap());
+    let sw_you_add = MEMBERSHIP_RE_SW_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Umemuongeza (.+)$").unwrap());
+    let sw_you_remove = MEMBERSHIP_RE_SW_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Umemwondoa (.+)$").unwrap());
+    let tl_self_left = MEMBERSHIP_RE_TL_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^Umalis si (.+)$").unwrap());
+    let tl_third_add = MEMBERSHIP_RE_TL_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? nakapasok (.+)$").unwrap());
+    let tl_third_remove = MEMBERSHIP_RE_TL_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Inalis ni .+? si (.+)$").unwrap());
+    let tl_you_add = MEMBERSHIP_RE_TL_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Idinagdag mo si (.+)$").unwrap());
+    let tl_you_remove = MEMBERSHIP_RE_TL_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Inalis mo si (.+)$").unwrap());
+    let tr_self_left = MEMBERSHIP_RE_TR_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) ayrıldı$").unwrap());
+    let tr_third_add = MEMBERSHIP_RE_TR_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+?, (.+) kişisini ekledi$").unwrap());
+    let tr_third_remove = MEMBERSHIP_RE_TR_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+?, (.+) kişisini çıkardı$").unwrap());
+    let tr_you_add = MEMBERSHIP_RE_TR_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^(.+) kişisini eklediniz$").unwrap());
+    let tr_you_remove = MEMBERSHIP_RE_TR_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^(.+) kişisini çıkardınız$").unwrap());
+    let uz_self_left = MEMBERSHIP_RE_UZ_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) tark etdi$").unwrap());
+    let uz_third_add = MEMBERSHIP_RE_UZ_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? (.+)ni qo‘shdi$").unwrap());
+    let uz_third_remove = MEMBERSHIP_RE_UZ_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? (.+)ni o‘chirdi$").unwrap());
+    let uz_you_add = MEMBERSHIP_RE_UZ_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Siz (.+)ni qo‘shdingiz$").unwrap());
+    let uz_you_remove = MEMBERSHIP_RE_UZ_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Siz (.+)ni o‘chirdingiz$").unwrap());
+    let vi_self_left = MEMBERSHIP_RE_VI_SELF_LEFT.get_or_init(|| regex::Regex::new(r"(?i)^(.+) đã rời nhóm$").unwrap());
+    let vi_third_add = MEMBERSHIP_RE_VI_THIRD_ADD.get_or_init(|| regex::Regex::new(r"(?i)^.+? đã thêm (.+) vào nhóm$").unwrap());
+    let vi_third_remove = MEMBERSHIP_RE_VI_THIRD_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^.+? đã bỏ (.+) khỏi nhóm$").unwrap());
+    let vi_you_add = MEMBERSHIP_RE_VI_YOU_ADD.get_or_init(|| regex::Regex::new(r"(?i)^Bạn đã thêm (.+) vào nhóm$").unwrap());
+    let vi_you_remove = MEMBERSHIP_RE_VI_YOU_REMOVE.get_or_init(|| regex::Regex::new(r"(?i)^Bạn đã bỏ (.+) khỏi nhóm$").unwrap());
 
     let mut events = Vec::new();
 
@@ -5773,7 +6376,40 @@ fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEven
         )).collect();
         let content = content.trim();
 
-        if content == "Je hebt de groep verlaten" || content.eq_ignore_ascii_case("you left") {
+        if content == "Je hebt de groep verlaten"
+            || content.eq_ignore_ascii_case("you left")
+            || content.eq_ignore_ascii_case("groupe quitté")
+            || content.eq_ignore_ascii_case("vous avez quitté le groupe")
+            || content.eq_ignore_ascii_case("Siz tərk etdiniz")
+            || content.eq_ignore_ascii_case("Has marxat")
+            || content.eq_ignore_ascii_case("Opustili jste skupinu.")
+            || content.eq_ignore_ascii_case("Du forlod")
+            || content.eq_ignore_ascii_case("Du hast die Gruppe verlassen")
+            || content.eq_ignore_ascii_case("Saliste")
+            || content.eq_ignore_ascii_case("Sa lahkusid")
+            || content.eq_ignore_ascii_case("Sinä poistuit")
+            || content.eq_ignore_ascii_case("Izašli ste")
+            || content.eq_ignore_ascii_case("Kiléptél")
+            || content.eq_ignore_ascii_case("Anda keluar")
+            || content.eq_ignore_ascii_case("Hai abbandonato")
+            || content.eq_ignore_ascii_case("Jūs palikote")
+            || content.eq_ignore_ascii_case("Jūs aizgājāt")
+            || content.eq_ignore_ascii_case("Anda telah keluar")
+            || content.eq_ignore_ascii_case("Du forlot gruppen")
+            || content.eq_ignore_ascii_case("Opuściłeś(aś)")
+            || content.eq_ignore_ascii_case("Saiu do grupo")
+            || content.eq_ignore_ascii_case("Você saiu")
+            || content.eq_ignore_ascii_case("Ați ieșit")
+            || content.eq_ignore_ascii_case("Opustili ste skupinu.")
+            || content.eq_ignore_ascii_case("Odšli ste")
+            || content.eq_ignore_ascii_case("U largove")
+            || content.eq_ignore_ascii_case("Du lämnade")
+            || content.eq_ignore_ascii_case("Umejitoa")
+            || content.eq_ignore_ascii_case("Umalis ka")
+            || content.eq_ignore_ascii_case("Ayrıldınız")
+            || content.eq_ignore_ascii_case("Siz tark etdingiz")
+            || content.eq_ignore_ascii_case("Bạn đã rời nhóm")
+        {
             continue; // "you" left — no participant name to extract
         }
 
@@ -5826,6 +6462,935 @@ fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEven
                 }
             }
         } else if let Some(caps) = en_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        } else if let Some(caps) = fr_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = fr_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = fr_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = fr_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = fr_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Azerbaijani
+        } else if let Some(caps) = az_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = az_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = az_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = az_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        } else if let Some(caps) = az_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        // Catalan
+        } else if let Some(caps) = ca_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = ca_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = ca_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = ca_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = ca_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Czech
+        } else if let Some(caps) = cs_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = cs_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = cs_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = cs_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = cs_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Danish
+        } else if let Some(caps) = da_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = da_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = da_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = da_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = da_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // German
+        } else if let Some(caps) = de_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = de_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = de_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = de_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = de_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Spanish
+        } else if let Some(caps) = es_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = es_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = es_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = es_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = es_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Estonian
+        } else if let Some(caps) = et_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = et_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = et_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = et_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = et_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Finnish
+        } else if let Some(caps) = fi_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = fi_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = fi_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = fi_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = fi_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Croatian
+        } else if let Some(caps) = hr_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = hr_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = hr_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = hr_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = hr_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Hungarian
+        } else if let Some(caps) = hu_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = hu_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = hu_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = hu_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = hu_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Indonesian
+        } else if let Some(caps) = id_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = id_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = id_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = id_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = id_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Italian
+        } else if let Some(caps) = it_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = it_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = it_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = it_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = it_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Lithuanian
+        } else if let Some(caps) = lt_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = lt_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = lt_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = lt_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = lt_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Latvian
+        } else if let Some(caps) = lv_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = lv_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = lv_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = lv_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = lv_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Malay
+        } else if let Some(caps) = ms_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = ms_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = ms_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = ms_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = ms_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Norwegian Bokmal
+        } else if let Some(caps) = nb_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = nb_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = nb_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = nb_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = nb_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Polish
+        } else if let Some(caps) = pl_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = pl_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = pl_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = pl_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = pl_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Portuguese (Portugal)
+        } else if let Some(caps) = pt_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = pt_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = pt_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = pt_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = pt_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Portuguese (Brazil)
+        } else if let Some(caps) = ptbr_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = ptbr_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = ptbr_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = ptbr_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = ptbr_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Romanian
+        } else if let Some(caps) = ro_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = ro_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = ro_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = ro_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = ro_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Slovak
+        } else if let Some(caps) = sk_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = sk_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = sk_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = sk_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = sk_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Slovenian
+        } else if let Some(caps) = sl_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = sl_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = sl_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = sl_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = sl_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Albanian
+        } else if let Some(caps) = sq_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = sq_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = sq_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = sq_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = sq_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Swedish
+        } else if let Some(caps) = sv_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = sv_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = sv_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = sv_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = sv_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Swahili
+        } else if let Some(caps) = sw_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = sw_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = sw_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = sw_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = sw_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Tagalog
+        } else if let Some(caps) = tl_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = tl_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = tl_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = tl_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = tl_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Turkish
+        } else if let Some(caps) = tr_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = tr_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = tr_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = tr_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = tr_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Uzbek
+        } else if let Some(caps) = uz_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = uz_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = uz_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = uz_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = uz_third_add.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                    }
+                }
+            }
+        // Vietnamese
+        } else if let Some(caps) = vi_self_left.captures(content) {
+            events.push((normalize_chat_name(&caps[1]), MembershipEvent::Left));
+        } else if let Some(caps) = vi_you_remove.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                }
+            }
+        } else if let Some(caps) = vi_you_add.captures(content) {
+            for name in split_membership_targets(&caps[1]) {
+                if !is_group_attribute_target(&name) {
+                    events.push((normalize_chat_name(&name), MembershipEvent::Added));
+                }
+            }
+        } else if let Some(caps) = vi_third_remove.captures(content) {
+            if !is_group_attribute_target(&caps[1]) {
+                for name in split_membership_targets(&caps[1]) {
+                    if !is_group_attribute_target(&name) {
+                        events.push((normalize_chat_name(&name), MembershipEvent::Left));
+                    }
+                }
+            }
+        } else if let Some(caps) = vi_third_add.captures(content) {
             if !is_group_attribute_target(&caps[1]) {
                 for name in split_membership_targets(&caps[1]) {
                     if !is_group_attribute_target(&name) {
@@ -8112,6 +9677,758 @@ mod tests {
 
 
 
+    // ==================== detect_group_chat — indicator phrases (new languages) ====================
+
+    #[test]
+    fn detect_group_chat__german_created_group_indicator_returns_true_even_with_two_senders() {
+        let msgs = vec![
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "Alice hat die Gruppe erstellt".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+        ];
+        assert!(detect_group_chat(&msgs));
+    }
+
+    #[test]
+    fn detect_group_chat__spanish_created_group_indicator_returns_true_even_with_two_senders() {
+        let msgs = vec![
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "Alice creó el grupo".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+        ];
+        assert!(detect_group_chat(&msgs));
+    }
+
+    #[test]
+    fn detect_group_chat__italian_created_group_indicator_returns_true_even_with_two_senders() {
+        let msgs = vec![
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "Alice ha creato il gruppo".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+        ];
+        assert!(detect_group_chat(&msgs));
+    }
+
+    #[test]
+    fn detect_group_chat__portuguese_created_group_indicator_returns_true_even_with_two_senders() {
+        let msgs = vec![
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "Alice criou o grupo".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+        ];
+        assert!(detect_group_chat(&msgs));
+    }
+
+    #[test]
+    fn detect_group_chat__polish_created_group_indicator_returns_true_even_with_two_senders() {
+        let msgs = vec![
+            Message { id: None, sender: "System".into(), msg_type: "system".into(), content: "Alice utworzył grupę".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Alice".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+            Message { id: None, sender: "Bob".into(), msg_type: "text".into(), content: "hi".into(), timestamp: "".into(), media: None, duration: None, tag_ext: None, display_name: None, is_favorite: None },
+        ];
+        assert!(detect_group_chat(&msgs));
+    }
+
+    // ==================== is_group_attribute_target ====================
+
+    #[test]
+    fn is_group_attribute_target__dutch_group_targets_return_true() {
+        assert!(is_group_attribute_target("de groep"));
+        assert!(is_group_attribute_target("de groepsafbeelding"));
+        assert!(is_group_attribute_target("de groepsbeschrijving"));
+        assert!(is_group_attribute_target("je"));
+    }
+
+    #[test]
+    fn is_group_attribute_target__english_group_targets_return_true() {
+        assert!(is_group_attribute_target("you"));
+        assert!(is_group_attribute_target("the group"));
+        assert!(is_group_attribute_target("this group"));
+        assert!(is_group_attribute_target("the group icon"));
+    }
+
+    #[test]
+    fn is_group_attribute_target__french_group_targets_return_true() {
+        assert!(is_group_attribute_target("le groupe"));
+        assert!(is_group_attribute_target("la description du groupe"));
+        assert!(is_group_attribute_target("l'icône du groupe"));
+        assert!(is_group_attribute_target("la photo du groupe"));
+        assert!(is_group_attribute_target("vous"));
+    }
+
+    #[test]
+    fn is_group_attribute_target__german_group_targets_return_true() {
+        assert!(is_group_attribute_target("die Gruppe"));
+        assert!(is_group_attribute_target("die Gruppenbeschreibung"));
+        assert!(is_group_attribute_target("dich"));
+        assert!(is_group_attribute_target("euch"));
+    }
+
+    #[test]
+    fn is_group_attribute_target__spanish_group_targets_return_true() {
+        assert!(is_group_attribute_target("el grupo"));
+        assert!(is_group_attribute_target("el grupo de amigos"));
+        assert!(is_group_attribute_target("te"));
+    }
+
+    #[test]
+    fn is_group_attribute_target__ordinary_person_names_return_false() {
+        for name in ["John Smith", "Marie", "Jose Garcia", "Francois Dubois", "Ahmet Yilmaz", "Piet Jansen"] {
+            assert!(!is_group_attribute_target(name), "expected {name:?} to not be treated as a group-attribute target");
+        }
+    }
+
+    // ==================== split_membership_targets ====================
+
+    #[test]
+    fn split_membership_targets__dutch_en_separator_splits_two_names() {
+        assert_eq!(split_membership_targets("Marie en Piet"), vec!["Marie", "Piet"]);
+    }
+
+    #[test]
+    fn split_membership_targets__english_and_separator_splits_two_names() {
+        assert_eq!(split_membership_targets("Marie and Piet"), vec!["Marie", "Piet"]);
+    }
+
+    #[test]
+    fn split_membership_targets__french_et_separator_splits_two_names() {
+        assert_eq!(split_membership_targets("Marie et Piet"), vec!["Marie", "Piet"]);
+    }
+
+    #[test]
+    fn split_membership_targets__german_und_separator_splits_two_names() {
+        assert_eq!(split_membership_targets("Marie und Piet"), vec!["Marie", "Piet"]);
+    }
+
+    #[test]
+    fn split_membership_targets__vietnamese_va_separator_splits_two_names() {
+        assert_eq!(split_membership_targets("Marie và Piet"), vec!["Marie", "Piet"]);
+    }
+
+    #[test]
+    fn split_membership_targets__comma_and_and_separator_splits_three_names() {
+        assert_eq!(split_membership_targets("Alice, Bob and Charlie"), vec!["Alice", "Bob", "Charlie"]);
+    }
+
+    #[test]
+    fn split_membership_targets__name_with_capitalized_middle_initial_is_not_split() {
+        // The split regex has no case-insensitive flag, so a capitalized middle initial like
+        // " A " must not be confused with the lowercase " a " ("and") list separator.
+        assert_eq!(split_membership_targets("John A Smith"), vec!["John A Smith"]);
+        assert_eq!(split_membership_targets("Mary E Johnson"), vec!["Mary E Johnson"]);
+    }
+
+    // ==================== extract_membership_events ====================
+
+    // --- Dutch ---
+    #[test]
+    fn extract_membership_events__dutch_third_person_add_returns_added_event() {
+        let msgs = vec!["John heeft Marie toegevoegd".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__dutch_third_person_remove_returns_left_event() {
+        let msgs = vec!["John heeft Marie verwijderd".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__dutch_self_left_returns_left_event() {
+        let msgs = vec!["John heeft de groep verlaten".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- English ---
+    #[test]
+    fn extract_membership_events__english_third_person_add_returns_added_event() {
+        let msgs = vec!["John added Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__english_third_person_remove_returns_left_event() {
+        let msgs = vec!["John removed Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__english_self_left_returns_left_event() {
+        let msgs = vec!["John left".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- French ---
+    #[test]
+    fn extract_membership_events__french_third_person_add_returns_added_event() {
+        let msgs = vec!["John a ajouté Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__french_third_person_remove_returns_left_event() {
+        let msgs = vec!["John a retiré Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__french_self_left_returns_left_event() {
+        let msgs = vec!["John est parti".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Azerbaijani ---
+    #[test]
+    fn extract_membership_events__azerbaijani_third_person_add_returns_added_event() {
+        let msgs = vec!["John əlavə etdi: Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    // Real string is target-before-actor: "{target} {actor} tərəfindən çıxarıldı".
+    #[test]
+    fn extract_membership_events__azerbaijani_third_person_remove_returns_left_event() {
+        let msgs = vec!["Marie John tərəfindən çıxarıldı".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__azerbaijani_self_left_returns_left_event() {
+        let msgs = vec!["John tərk etdi".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Catalan ---
+    #[test]
+    fn extract_membership_events__catalan_third_person_add_returns_added_event() {
+        let msgs = vec!["John ha afegit Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__catalan_third_person_remove_returns_left_event() {
+        let msgs = vec!["John ha expulsat a Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__catalan_self_left_returns_left_event() {
+        let msgs = vec!["John marxa".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Czech ---
+    #[test]
+    fn extract_membership_events__czech_third_person_add_returns_added_event() {
+        let msgs = vec!["John přidal/a uživatele Marie.".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__czech_third_person_remove_returns_left_event() {
+        let msgs = vec!["John odebral(a) uživatele Marie.".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__czech_self_left_returns_left_event() {
+        let msgs = vec!["John odešel/a".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Danish ---
+    #[test]
+    fn extract_membership_events__danish_third_person_add_returns_added_event() {
+        let msgs = vec!["John tilføjede Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__danish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John fjernede Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__danish_self_left_returns_left_event() {
+        let msgs = vec!["John forlod".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- German ---
+    #[test]
+    fn extract_membership_events__german_third_person_add_returns_added_event() {
+        let msgs = vec!["John hat Marie hinzugefügt".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__german_third_person_remove_returns_left_event() {
+        let msgs = vec!["John hat Marie entfernt".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__german_self_left_returns_left_event() {
+        let msgs = vec!["John hat die Gruppe verlassen".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Spanish ---
+    #[test]
+    fn extract_membership_events__spanish_third_person_add_returns_added_event() {
+        let msgs = vec!["John añadió a Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__spanish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John eliminó a Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__spanish_self_left_returns_left_event() {
+        let msgs = vec!["John salió".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Estonian ---
+    #[test]
+    fn extract_membership_events__estonian_third_person_add_returns_added_event() {
+        let msgs = vec!["John lisas Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__estonian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John eemaldas Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__estonian_self_left_returns_left_event() {
+        let msgs = vec!["John lahkus".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Finnish ---
+    #[test]
+    fn extract_membership_events__finnish_third_person_add_returns_added_event() {
+        let msgs = vec!["John lisäsi henkilön Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__finnish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John poisti henkilön Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__finnish_self_left_returns_left_event() {
+        let msgs = vec!["John poistui".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Croatian ---
+    #[test]
+    fn extract_membership_events__croatian_third_person_add_returns_added_event() {
+        let msgs = vec!["John dodao/la Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__croatian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John je uklonio Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__croatian_self_left_returns_left_event() {
+        let msgs = vec!["John izašao".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Hungarian ---
+    #[test]
+    fn extract_membership_events__hungarian_third_person_add_returns_added_event() {
+        let msgs = vec!["John hozzáadta Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__hungarian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John eltávolította Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__hungarian_self_left_returns_left_event() {
+        let msgs = vec!["John kilépett".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Indonesian ---
+    #[test]
+    fn extract_membership_events__indonesian_third_person_add_returns_added_event() {
+        let msgs = vec!["John menambahkan Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__indonesian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John mengeluarkan Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__indonesian_self_left_returns_left_event() {
+        let msgs = vec!["John keluar".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Italian ---
+    #[test]
+    fn extract_membership_events__italian_third_person_add_returns_added_event() {
+        let msgs = vec!["John ha aggiunto Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__italian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John ha rimosso Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__italian_self_left_returns_left_event() {
+        let msgs = vec!["John ha abbandonato".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Lithuanian ---
+    #[test]
+    fn extract_membership_events__lithuanian_third_person_add_returns_added_event() {
+        let msgs = vec!["John pridėjo Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__lithuanian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John pašalino Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__lithuanian_self_left_returns_left_event() {
+        let msgs = vec!["John išėjo".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Latvian ---
+    #[test]
+    fn extract_membership_events__latvian_third_person_add_returns_added_event() {
+        let msgs = vec!["John pievienoja Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__latvian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John noņēma Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__latvian_self_left_returns_left_event() {
+        let msgs = vec!["John aizgāja".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Malay ---
+    #[test]
+    fn extract_membership_events__malay_third_person_add_returns_added_event() {
+        let msgs = vec!["John telah menambah Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__malay_third_person_remove_returns_left_event() {
+        let msgs = vec!["John telah membuang Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__malay_self_left_returns_left_event() {
+        let msgs = vec!["John keluar".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Norwegian Bokmal ---
+    #[test]
+    fn extract_membership_events__norwegian_bokmal_third_person_add_returns_added_event() {
+        let msgs = vec!["John la til Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__norwegian_bokmal_third_person_remove_returns_left_event() {
+        let msgs = vec!["John fjernet Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__norwegian_bokmal_self_left_returns_left_event() {
+        let msgs = vec!["John forlot gruppen".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Polish ---
+    #[test]
+    fn extract_membership_events__polish_third_person_add_returns_added_event() {
+        let msgs = vec!["John dodał(a) Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__polish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John usunął(ęła) Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__polish_self_left_returns_left_event() {
+        let msgs = vec!["John opuścił(a)".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Portuguese (Portugal) ---
+    #[test]
+    fn extract_membership_events__portuguese_third_person_add_returns_added_event() {
+        let msgs = vec!["John adicionou Marie a este grupo".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__portuguese_third_person_remove_returns_left_event() {
+        let msgs = vec!["John removeu Marie deste grupo".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__portuguese_self_left_returns_left_event() {
+        let msgs = vec!["John saiu do grupo".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Portuguese (Brazil) ---
+    #[test]
+    fn extract_membership_events__portuguese_brazil_third_person_add_returns_added_event() {
+        let msgs = vec!["John adicionou Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__portuguese_brazil_third_person_remove_returns_left_event() {
+        let msgs = vec!["John removeu Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__portuguese_brazil_self_left_returns_left_event() {
+        let msgs = vec!["John saiu".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Romanian ---
+    #[test]
+    fn extract_membership_events__romanian_third_person_add_returns_added_event() {
+        let msgs = vec!["John a adăugat Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__romanian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John a eliminat Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__romanian_self_left_returns_left_event() {
+        let msgs = vec!["John a ieșit".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Slovak ---
+    #[test]
+    fn extract_membership_events__slovak_third_person_add_returns_added_event() {
+        let msgs = vec!["John pridal/a používateľa Marie.".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__slovak_third_person_remove_returns_left_event() {
+        let msgs = vec!["John odobral/a používateľa Marie.".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__slovak_self_left_returns_left_event() {
+        let msgs = vec!["John odišiel/a".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Slovenian ---
+    #[test]
+    fn extract_membership_events__slovenian_third_person_add_returns_added_event() {
+        let msgs = vec!["John je dodal/a Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__slovenian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John je odstranil/a Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__slovenian_self_left_returns_left_event() {
+        let msgs = vec!["John je odšel/a".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Albanian ---
+    #[test]
+    fn extract_membership_events__albanian_third_person_add_returns_added_event() {
+        let msgs = vec!["John shtoi Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__albanian_third_person_remove_returns_left_event() {
+        let msgs = vec!["John hoqi Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__albanian_self_left_returns_left_event() {
+        let msgs = vec!["John u largua".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Swedish ---
+    #[test]
+    fn extract_membership_events__swedish_third_person_add_returns_added_event() {
+        let msgs = vec!["John lade till Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__swedish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John tog bort Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__swedish_self_left_returns_left_event() {
+        let msgs = vec!["John lämnade".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Swahili ---
+    #[test]
+    fn extract_membership_events__swahili_third_person_add_returns_added_event() {
+        let msgs = vec!["John amemuongeza Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__swahili_third_person_remove_returns_left_event() {
+        let msgs = vec!["John amemuondoa Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__swahili_self_left_returns_left_event() {
+        let msgs = vec!["John katoka".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Tagalog ---
+    #[test]
+    fn extract_membership_events__tagalog_third_person_add_returns_added_event() {
+        let msgs = vec!["John nakapasok Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__tagalog_third_person_remove_returns_left_event() {
+        let msgs = vec!["Inalis ni John si Marie".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__tagalog_self_left_returns_left_event() {
+        let msgs = vec!["Umalis si John".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Turkish ---
+    #[test]
+    fn extract_membership_events__turkish_third_person_add_returns_added_event() {
+        let msgs = vec!["John, Marie kişisini ekledi".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__turkish_third_person_remove_returns_left_event() {
+        let msgs = vec!["John, Marie kişisini çıkardı".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__turkish_self_left_returns_left_event() {
+        let msgs = vec!["John ayrıldı".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Uzbek ---
+    #[test]
+    fn extract_membership_events__uzbek_third_person_add_returns_added_event() {
+        let msgs = vec!["John Marieni qo‘shdi".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__uzbek_third_person_remove_returns_left_event() {
+        let msgs = vec!["John Marieni o‘chirdi".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__uzbek_self_left_returns_left_event() {
+        let msgs = vec!["John tark etdi".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
+    // --- Vietnamese ---
+    #[test]
+    fn extract_membership_events__vietnamese_third_person_add_returns_added_event() {
+        let msgs = vec!["John đã thêm Marie vào nhóm".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Added)]);
+    }
+
+    #[test]
+    fn extract_membership_events__vietnamese_third_person_remove_returns_left_event() {
+        let msgs = vec!["John đã bỏ Marie khỏi nhóm".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("marie".to_string(), MembershipEvent::Left)]);
+    }
+
+    #[test]
+    fn extract_membership_events__vietnamese_self_left_returns_left_event() {
+        let msgs = vec!["John đã rời nhóm".to_string()];
+        assert_eq!(extract_membership_events(&msgs), vec![("john".to_string(), MembershipEvent::Left)]);
+    }
+
     // ==================== parse_chat_text — message types ====================
 
 
@@ -8342,6 +10659,14 @@ mod tests {
 
         assert_eq!(msgs[0].sender, "System");
 
+    }
+
+    #[test]
+    fn parse_chat_text__azerbaijani_added_message_with_colon_is_still_typed_as_system() {
+        let chat = "12/04/2024, 14:32 - John əlavə etdi: Marie\n";
+        let msgs = parse(chat);
+        assert_eq!(msgs[0].msg_type, "system");
+        assert_eq!(msgs[0].sender, "System");
     }
 
 

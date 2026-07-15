@@ -1,0 +1,9 @@
+10/07/2026, 09:00 - Test Person One ha creat el grup "Test Group CA"
+10/07/2026, 09:05 - Test Person Two: Hola a tothom!
+10/07/2026, 09:07 - Test Person Three: Com esteu?
+10/07/2026, 09:10 - Test Person One: Bon dia!
+11/07/2026, 10:00 - Test Person One ha afegit Test Person Four
+11/07/2026, 10:05 - Test Person Four: Content d'ser aquí!
+12/07/2026, 11:00 - Test Person Two ha expulsat a Test Person Five
+12/07/2026, 11:05 - Test Person Three marxa
+13/07/2026, 12:00 - Test Person One ha canviat el tema a "Test Group CA Updated"

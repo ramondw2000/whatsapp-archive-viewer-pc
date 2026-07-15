@@ -6,12 +6,19 @@ Built with **Tauri 2**, **React 19**, and **Rust**.
 
 ## Features
 
-- Import WhatsApp chat exports (ZIP files) — Android and iOS formats
-- View messages, media, and attachments inline
-- Search and filter messages
-- Customize chat backgrounds
-- Edit contact profiles with notes and phone numbers
-- Export and re-import chats
+- Import WhatsApp chat exports (ZIP files) — Android and iOS formats, including batch import of
+  multiple ZIPs at once and restoring from a prior app backup ZIP
+- Group detection and member-added/removed/left tracking across 32 languages (see table below)
+- View messages, media, and attachments inline (images, video, audio, GIFs, stickers, files, locations,
+  contact cards, polls), with a media gallery and lightbox viewer
+- Full-text search within a chat, with advanced filters (date range, sender, message type)
+- Star/favorite messages
+- Customize chat backgrounds (default or custom images, with history)
+- Edit contact profiles — name, notes, phone number, photo, and name history
+- Link a person's identity across every group they're in and their 1-on-1 chat, so profile edits made
+  from any of them stay in sync ("contacts" feature — see `TODO.md` for current limitations)
+- Multi-select messages (long-press) with bulk favorite-toggling
+- Export a single chat or all chats to ZIP, and re-import them later
 
 ## Prerequisites
 
@@ -57,6 +64,61 @@ Run backend (Rust) tests:
 cd src-tauri
 cargo test
 ```
+
+Run frontend (React/TypeScript) tests:
+```bash
+npm test
+```
+
+Synthetic per-language WhatsApp export ZIPs for manually verifying group detection and member
+tracking are in `src-tauri/tests/test_cases/language_samples/` — import one via the app's own
+"+ Import" button to sanity-check a specific language.
+
+### Language support status
+
+Group detection and member-added/removed/left tracking (`detect_group_chat` /
+`extract_membership_events` in `src-tauri/src/lib.rs`). "Tested against a real export" means an actual
+user-provided WhatsApp export confirmed the wording; everything else is best-effort, sourced from a
+third-party decompiled WhatsApp APK string dump (`github.com/GigaDroid/Decompiled-Whatsapp`), never
+confirmed against real app output.
+
+| Code | Language | Tested against a real export | Known issues |
+|---|---|---|---|
+| `nl` | Dutch | ✅ Yes | — |
+| `en` | English | ❌ No | — |
+| `fr` | French | ❌ No | — |
+| `az` | Azerbaijani | ❌ No | "Removed" pattern has target-before-actor word order; multi-word names can be captured ambiguously |
+| `ca` | Catalan | ❌ No | — |
+| `cs` | Czech | ❌ No | — |
+| `da` | Danish | ❌ No | — |
+| `de` | German | ❌ No | — |
+| `es` | Spanish | ❌ No | — |
+| `et` | Estonian | ❌ No | — |
+| `fi` | Finnish | ❌ No | — |
+| `hr` | Croatian | ❌ No | — |
+| `hu` | Hungarian | ❌ No | — |
+| `id` | Indonesian | ❌ No | — |
+| `it` | Italian | ❌ No | — |
+| `lt` | Lithuanian | ❌ No | — |
+| `lv` | Latvian | ❌ No | — |
+| `ms` | Malay | ❌ No | No "subject changed" phrase available (detection-list only, doesn't affect member tracking) |
+| `nb` | Norwegian Bokmål | ❌ No | — |
+| `pl` | Polish | ❌ No | — |
+| `pt` | Portuguese (Portugal) | ❌ No | — |
+| `pt-BR` | Portuguese (Brazil) | ❌ No | Reuses Portugal's "group created" phrase; no Brazil-specific one found in the source |
+| `ro` | Romanian | ❌ No | — |
+| `sk` | Slovak | ❌ No | No "subject changed" phrase available (detection-list only, doesn't affect member tracking) |
+| `sl` | Slovenian | ❌ No | — |
+| `sq` | Albanian | ❌ No | — |
+| `sv` | Swedish | ❌ No | — |
+| `sw` | Swahili | ❌ No | — |
+| `tl` | Tagalog | ❌ No | — |
+| `tr` | Turkish | ❌ No | — |
+| `uz` | Uzbek | ❌ No | No fixed verb between actor and target; multi-word names can be captured ambiguously |
+| `vi` | Vietnamese | ❌ No | — |
+
+If a language's detection looks wrong for a real export, that's expected for anything marked "No" above
+— see `TODO.md` and the test fixtures folder for how to investigate and fix a specific language.
 
 ## Project Structure
 
