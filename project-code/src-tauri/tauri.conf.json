@@ -29,7 +29,7 @@
           "$RESOURCE/app_backgrounds/**"
         ]
       },
-      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost http://asset.localhost blob: media: http://media.localhost https://media.localhost; media-src 'self' data: asset: https://asset.localhost http://asset.localhost blob: media: http://media.localhost https://media.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: https://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost http://asset.localhost blob: media: http://media.localhost https://media.localhost; media-src 'self' data: asset: https://asset.localhost http://asset.localhost blob: media: http://media.localhost https://media.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: https://ipc.localhost https://api.github.com"
     }
   },
   "bundle": {
