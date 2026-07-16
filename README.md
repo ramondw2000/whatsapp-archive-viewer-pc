@@ -16,8 +16,11 @@ Built with **Tauri 2**, **React 19**, and **Rust**.
 - Customize chat backgrounds (default or custom images, with history)
 - Edit contact profiles — name, notes, phone number, photo, and name history
 - Link a person's identity across every group they're in and their 1-on-1 chat, so profile edits made
-  from any of them stay in sync ("contacts" feature — see `TODO.md` for current limitations)
-- Multi-select messages (long-press) with bulk favorite-toggling
+  from any of them stay in sync ("contacts" feature — see `TODO.md` for current limitations). A custom
+  name overrides the raw exported sender name in both message bubbles and the Group Info participant list
+- Multi-select messages (long-press to start, click to toggle more, shift-click to select a range) with
+  bulk favorite-toggling — an amber ring marks which message a shift-click will range from
+- Light/dark theme toggle; defaults to the OS's light/dark setting the first time the app runs
 - Export a single chat or all chats to ZIP, and re-import them later
 
 ## Prerequisites

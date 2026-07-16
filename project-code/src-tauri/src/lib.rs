@@ -3727,6 +3727,27 @@ fn get_linked_participants(participant_names: Vec<String>) -> Result<Vec<String>
     Ok(linked)
 }
 
+// Read-only lookup — never creates a contact, just reports the custom name already set on one
+// (via the contact's profile) if the participant has been linked before. Used to make a group's
+// per-message sender label reflect the contact's chosen name instead of the raw exported string.
+#[tauri::command]
+fn get_display_names_for_participants(participant_names: Vec<String>) -> Result<HashMap<String, String>, String> {
+    let conn = get_db();
+    let mut overrides = HashMap::new();
+    for name in participant_names {
+        let normalized = normalize_chat_name(&name);
+        let custom_name: Option<String> = conn.query_row(
+            "SELECT name FROM contacts WHERE normalized_key = ?1 AND name IS NOT NULL AND name != ''",
+            params![&normalized],
+            |row| row.get(0),
+        ).ok();
+        if let Some(custom_name) = custom_name {
+            overrides.insert(name, custom_name);
+        }
+    }
+    Ok(overrides)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum MembershipEvent {
     Left,
@@ -5032,6 +5053,68 @@ fn extract_membership_events(messages: &[String]) -> Vec<(String, MembershipEven
         }
     }
     events
+}
+
+// Title-cases a normalized (already-lowercased) name for display, e.g. "anouk" -> "Anouk".
+// Used only as a fallback label for participants who never sent a real chat message, so there's
+// no display-cased sender string to reuse — a phone number like "+31623347487" passes through
+// unchanged since it has no lowercase letters to capitalize.
+fn title_case(name: &str) -> String {
+    name.split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+// Merges message senders with names mentioned in membership events into one deduplicated,
+// sorted display list. A sender's own display-cased name always wins over a title-cased fallback
+// for the same person (matched case-insensitively via normalize_chat_name), since it's the real
+// cased name from the export rather than a guess.
+fn merge_group_participants(senders: Vec<String>, events: Vec<(String, MembershipEvent)>) -> Vec<String> {
+    let mut by_normalized: HashMap<String, String> = HashMap::new();
+    for sender in senders {
+        by_normalized.insert(normalize_chat_name(&sender), sender);
+    }
+    for (normalized, _) in events {
+        by_normalized.entry(normalized.clone()).or_insert_with(|| title_case(&normalized));
+    }
+    let mut result: Vec<String> = by_normalized.into_values().collect();
+    result.sort();
+    result
+}
+
+// Returns every participant ever known in a group chat: people who sent a real message, plus
+// people only ever mentioned in "added"/"removed"/"left" system messages (e.g. someone who was
+// added and removed before ever sending anything). Without the latter, a group where nobody who
+// was added/removed ever posted a real message would show 0 participants and no former-member
+// badges, even though the system messages clearly record former members.
+#[tauri::command]
+fn get_group_participants(chat_id: String) -> Result<Vec<String>, String> {
+    let conn = get_db();
+    let senders: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT sender FROM messages WHERE chat_id = ?1 AND msg_type != 'system' AND sender != 'System'"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![&chat_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.flatten().collect()
+    };
+    let system_messages: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT content FROM messages WHERE chat_id = ?1 AND (sender = 'System' OR msg_type = 'system') ORDER BY id"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![&chat_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.flatten().collect()
+    };
+    let events = extract_membership_events(&system_messages);
+    Ok(merge_group_participants(senders, events))
 }
 
 #[tauri::command]
@@ -6409,6 +6492,8 @@ pub fn run() {
             get_contact_groups,
             remove_contact_group,
             get_linked_participants,
+            get_display_names_for_participants,
+            get_group_participants,
             get_former_members,
             get_unlinked_one_on_one_chats,
             get_linked_chat_for_contact,
@@ -7668,5 +7753,42 @@ mod tests {
     #[test]
     fn validate_url_scheme__plain_text_no_scheme_is_rejected() {
         assert!(validate_url_scheme("example.com").is_err());
+    }
+    // ==================== title_case ====================
+    #[test]
+    fn title_case__lowercase_name_gets_capitalized() {
+        assert_eq!(title_case("anouk"), "Anouk");
+    }
+    #[test]
+    fn title_case__multi_word_name_capitalizes_each_word() {
+        assert_eq!(title_case("john smith"), "John Smith");
+    }
+    #[test]
+    fn title_case__phone_number_passes_through_unchanged() {
+        assert_eq!(title_case("+31623347487"), "+31623347487");
+    }
+    // ==================== merge_group_participants ====================
+    #[test]
+    fn merge_group_participants__person_only_in_events_is_included() {
+        let senders = vec!["Alice".to_string()];
+        let events = vec![("bob".to_string(), MembershipEvent::Left)];
+        assert_eq!(merge_group_participants(senders, events), vec!["Alice".to_string(), "Bob".to_string()]);
+    }
+    #[test]
+    fn merge_group_participants__sender_cased_name_wins_over_title_cased_fallback() {
+        let senders = vec!["AnOuk".to_string()];
+        let events = vec![("anouk".to_string(), MembershipEvent::Left)];
+        assert_eq!(merge_group_participants(senders, events), vec!["AnOuk".to_string()]);
+    }
+    #[test]
+    fn merge_group_participants__no_senders_still_returns_event_only_names() {
+        // The bug this guards against: a group where every message is a system message (nobody
+        // ever sent a real chat message) must still surface former members, not an empty list.
+        let senders: Vec<String> = vec![];
+        let events = vec![
+            ("anouk".to_string(), MembershipEvent::Left),
+            ("gerard".to_string(), MembershipEvent::Left),
+        ];
+        assert_eq!(merge_group_participants(senders, events), vec!["Anouk".to_string(), "Gerard".to_string()]);
     }
 }

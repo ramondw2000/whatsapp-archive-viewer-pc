@@ -14,6 +14,7 @@ interface GroupParticipantsDialogProps {
   linkedParticipants?: Set<string>;
   onEditParticipant?: (name: string) => void;
   formerMembers?: Set<string>;
+  displayNameOverrides?: Record<string, string>;
 }
 
 export function GroupParticipantsDialog({
@@ -28,6 +29,7 @@ export function GroupParticipantsDialog({
   linkedParticipants,
   onEditParticipant,
   formerMembers,
+  displayNameOverrides = {},
 }: GroupParticipantsDialogProps) {
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
 
@@ -77,10 +79,12 @@ export function GroupParticipantsDialog({
         </div>
         <p className="group-participant-count">{participants.length} participant{participants.length !== 1 ? "s" : ""}</p>
         <div className="group-participants-list">
-          {participants.map(name => (
+          {participants.map(name => {
+            const displayName = displayNameOverrides[name] ?? name;
+            return (
             <div key={name} className="group-participant-item">
-              <div className="group-participant-avatar">{getInitials(name)}</div>
-              <span className="group-participant-name">{name}</span>
+              <div className="group-participant-avatar">{getInitials(displayName)}</div>
+              <span className="group-participant-name">{displayName}</span>
               {formerMembers?.has(name) && (
                 <span className="former-member-badge" title="No longer in this group">Former member</span>
               )}
@@ -98,7 +102,8 @@ export function GroupParticipantsDialog({
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
         <div className="dialog-buttons">
           <button type="button" onClick={onCancel}>

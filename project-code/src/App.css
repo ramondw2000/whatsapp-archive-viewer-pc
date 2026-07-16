@@ -4651,6 +4651,25 @@ input, textarea {
 
 }
 
+/* Shift-click anchor: the message a shift-click range extends from. Amber so it reads
+   distinctly from the green "selected" ring in both themes; shown even if the anchor itself
+   isn't currently selected (re-clicking a selected message to deselect it moves the anchor to
+   it without keeping it selected). */
+
+.message.selection-anchor {
+
+  box-shadow: 0 0 0 3px #f0a500;
+  outline: none;
+  box-sizing: border-box;
+
+}
+
+.message.selected.selection-anchor {
+
+  box-shadow: 0 0 0 3px #25d366, 0 0 0 6px #f0a500;
+
+}
+
 
 @keyframes highlight-pulse {
 
@@ -9169,6 +9188,18 @@ input, textarea {
 
   box-shadow: 0 0 0 3px #25d366 !important;
   background-color: rgba(37, 211, 102, 0.15) !important;
+
+}
+
+.message.sticker-message.selection-anchor {
+
+  box-shadow: 0 0 0 3px #f0a500 !important;
+
+}
+
+.message.sticker-message.selected.selection-anchor {
+
+  box-shadow: 0 0 0 3px #25d366, 0 0 0 6px #f0a500 !important;
 
 }
 

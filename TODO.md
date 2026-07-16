@@ -8,20 +8,11 @@ is captured below).
 
 ## Confirmed gaps
 
-From a full code-vs-checklist audit done this session (2026-07-15) — everything else in the old
-checklists was cross-checked against the actual code and found implemented.
+From a full code-vs-checklist audit done 2026-07-15 — everything else in the old checklists was
+cross-checked against the actual code and found implemented.
 
-- **Shift-click range selection in multi-select mode is missing.** No shift-key handling exists in
-  the message click logic.
-- **Clicking a plain text message in multi-select mode doesn't select it.** Only clicking image/video/GIF
-  content toggles selection; text bubbles no-op their click handler while in multi-select mode.
 - **No right-click/context menu for editing messages.** The actual UI uses a hover-revealed pencil icon
   instead, and only on media messages.
-- **No "set a display name for a sender" feature** (rename a sender everywhere in the chat). The closest
-  existing things are renaming a single media file's display name, and the Username dialog, which only
-  marks which sender is "you" — neither renames a sender across the conversation.
-- **New-import auto-open only works when no chat is already open.** If a chat is open when you import
-  another, the app just refreshes the current chat instead of switching to the new one.
 
 ## Feature ideas (not started)
 
@@ -43,6 +34,40 @@ checklists was cross-checked against the actual code and found implemented.
   line numbers from that report are stale after this session's changes, so re-run rather than trusting
   old references.
 - ~~Excessive blank lines throughout lib.rs/App.tsx~~ and ~~dead code~~ — done, see below.
+
+## Recently completed (2026-07-17, v0.1.1)
+
+- **Update checker could tell a newer build to "update" to an older published release.** It compared
+  versions with a plain `!==` string check, so any difference from the latest GitHub release tag —
+  not just an older current version — triggered "Update Available," including the case where the
+  running build is actually ahead of the latest published release. Added `isNewerVersion`
+  (`src/utils/version.ts`, numeric per-component comparison) and use that instead.
+- **Shift-click range selection** (#18) implemented, then refined twice more: fixed a regression
+  where the click event that naturally follows a long-press's mousedown/mouseup immediately
+  re-toggled (and undid) the selection the long-press had just made, since the plain-text click
+  handler added for #19 didn't skip that trailing click the way the image/video/gif handlers
+  already did; and added a visual "anchor" indicator (amber ring, `.selection-anchor` in `App.css`)
+  showing which message a shift-click will range from, since there was previously no way to tell.
+  The anchor only moves when a click *adds* a message to the selection — deselecting some other
+  message leaves the anchor alone, and deselecting the anchor itself clears it rather than leaving
+  a stale amber ring on a deselected message.
+- **Plain text messages can now be selected in multi-select mode** (#19).
+- **New-import auto-switch** (#20): importing a chat now switches to it even if a different chat
+  was already open.
+- **Sender profile name override** (#22) implemented, then two follow-up gaps fixed: the Group Info
+  participant list wasn't consulting the override (`GroupParticipantsDialog` now takes a
+  `displayNameOverrides` prop); and saving a rename via the participant edit popup didn't refresh
+  the currently-open chat, so it looked stale until you switched chats and back.
+- **Theme toggle now follows the OS light/dark default** (#25). Originally shipped as a three-way
+  light/dark/auto cycle, then simplified per feedback to a plain two-way light/dark toggle whose
+  *initial* value (when no preference is saved yet) is read from `prefers-color-scheme` — no
+  separate "auto" mode to cycle through.
+- **Group Info showed "0 participants" for groups where nobody ever sent a real chat message** (#26)
+  — e.g. a group where every message is a system message (created/added/removed) with no actual
+  chat content. The participant list was built only from message senders; added
+  `get_group_participants` (lib.rs) to merge that with names mentioned in membership system-message
+  events, so former members show up (with the existing "Former member" badge) even if they never
+  posted anything.
 
 ## Recently completed (2026-07-15)
 

@@ -10,6 +10,7 @@ import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
 import { createRenderMessageText, highlightText } from "./utils/textRendering";
 import { stripChatPrefix } from "./utils/stripChatPrefix";
+import { isNewerVersion } from "./utils/version";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { JumpButton } from "./components/JumpButton";
 import { LinkConfirmModal } from "./components/LinkConfirmModal";
@@ -688,7 +689,7 @@ function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
       const data = releases[0]; // Get the most recent release (including prereleases)
       const latestVersion = data.tag_name.replace(/^v/, "");
       const currentVersion = __APP_VERSION__;
-      if (latestVersion !== currentVersion) {
+      if (isNewerVersion(latestVersion, currentVersion)) {
         setUpdateInfo({
           version: latestVersion,
           url: data.html_url
@@ -772,6 +773,7 @@ function App() {
   useEffect(() => { setMediaFallback(MediaFallback); }, []);
   const [chats, setChats] = useState<ChatMeta[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const selectedChatData = chats.find(c => c.id === selectedChat);
   const selectedChatRef = useRef<string | null>(null);
   // Keep ref in sync with state so async callbacks always see current value
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
@@ -789,7 +791,9 @@ function App() {
   const [importDetail, setImportDetail] = useState<{ messages: number; media: number; phase: string } | null>(null);
   const [username, setUsername] = useState<string>("");
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  );
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [mediaGalleryTab, setMediaGalleryTab] = useState<MediaTab>("images");
   const [showVCDialog, setShowVCDialog] = useState(false);
@@ -797,8 +801,39 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [favoriteMessages, setFavoriteMessages] = useState<Message[]>([]);
   const [selectedMessageIndices, setSelectedMessageIndices] = useState<Set<number>>(new Set());
-  const [_lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
+
+  // Shared toggle/range-select logic for the main chat's multi-select mode. Shift-click extends
+  // the selection from the last non-shift-selected index (the anchor) through the clicked index,
+  // without moving the anchor — so repeated shift-clicks keep extending/shrinking from the same
+  // start point, matching typical file-explorer / email-client range-select behavior.
+  function selectMessageIndex(idx: number, shiftKey: boolean) {
+    const newSelected = new Set(selectedMessageIndices);
+    if (shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, idx);
+      const end = Math.max(lastSelectedIndex, idx);
+      for (let i = start; i <= end; i++) newSelected.add(i);
+      setSelectedMessageIndices(newSelected);
+      return;
+    }
+    if (newSelected.has(idx)) {
+      newSelected.delete(idx);
+      setSelectedMessageIndices(newSelected);
+      if (newSelected.size === 0) {
+        setMultiSelectMode(false);
+      }
+      // Deselecting the anchor itself clears it, since there's no history of prior anchors to
+      // fall back to; deselecting some other still-selected message leaves the anchor as-is.
+      if (idx === lastSelectedIndex) {
+        setLastSelectedIndex(null);
+      }
+      return;
+    }
+    newSelected.add(idx);
+    setSelectedMessageIndices(newSelected);
+    setLastSelectedIndex(idx);
+  }
   const [pressTimers, setPressTimers] = useState<Map<number, ReturnType<typeof setTimeout> | undefined>>(new Map());
   const [lastLongPressedIndex, setLastLongPressedIndex] = useState<number | null>(null);
   // Chat media lightbox state
@@ -893,6 +928,8 @@ function App() {
   // Group-participant → shared contact profile editing
   const [linkedParticipants, setLinkedParticipants] = useState<Set<string>>(new Set());
   const [formerMembers, setFormerMembers] = useState<Set<string>>(new Set());
+  const [allParticipantNames, setAllParticipantNames] = useState<string[]>([]);
+  const [senderDisplayNames, setSenderDisplayNames] = useState<Record<string, string>>({});
   const [showParticipantDialog, setShowParticipantDialog] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [editingContactName, setEditingContactName] = useState("");
@@ -975,6 +1012,18 @@ function App() {
     setJumpedIndex(null);
     setSearchResultCursor(0);
   }, [selectedChat]);
+  // Resolve any group participants' custom profile names for the per-message sender label
+  useEffect(() => {
+    if (selectedChatData?.is_group && messages.length > 0) {
+      loadGroupParticipants().then(names => {
+        refreshSenderDisplayNames(names);
+        refreshParticipantBadges(names);
+      });
+    } else {
+      setSenderDisplayNames({});
+      setAllParticipantNames([]);
+    }
+  }, [selectedChat, messages.length, selectedChatData?.is_group]);
   async function loadProfile(chatId: string) {
     try {
       const data: Profile = await invoke("get_profile", { chatId });
@@ -1178,12 +1227,20 @@ function App() {
   function handlePhotoRemove() {
     setPendingProfilePhoto(""); // Empty string indicates photo removal
   }
-  function currentGroupParticipantNames(): string[] {
-    return [...new Set(
-      messages
-        .filter(m => m.type !== "system" && m.sender !== "System")
-        .map(m => m.sender)
-    )];
+  // Every participant this group has ever had — includes people only ever mentioned in an
+  // added/removed system message, not just senders of a real chat message (see get_group_participants
+  // in lib.rs for why: a group where everyone was removed before chatting would otherwise show 0
+  // participants and no former-member badges).
+  async function loadGroupParticipants(): Promise<string[]> {
+    if (!selectedChat) return [];
+    try {
+      const names: string[] = await invoke("get_group_participants", { chatId: selectedChat });
+      setAllParticipantNames(names);
+      return names;
+    } catch (err) {
+      console.error("Failed to load group participants:", err);
+      return [];
+    }
   }
   async function refreshLinkedParticipants(names: string[]) {
     try {
@@ -1206,6 +1263,14 @@ function App() {
     refreshLinkedParticipants(names);
     refreshFormerMembers(names);
   }
+  async function refreshSenderDisplayNames(names: string[]) {
+    try {
+      const overrides: Record<string, string> = await invoke("get_display_names_for_participants", { participantNames: names });
+      setSenderDisplayNames(overrides);
+    } catch (err) {
+      console.error("Failed to load sender display names:", err);
+    }
+  }
   async function checkPendingAutoLinks() {
     try {
       const events: AutoLinkEvent[] = await invoke("take_pending_auto_links");
@@ -1226,7 +1291,7 @@ function App() {
         return next;
       });
       loadChatList();
-      refreshParticipantBadges(currentGroupParticipantNames());
+      loadGroupParticipants().then(refreshParticipantBadges);
     } catch (err) {
       console.error("Failed to unlink:", err);
       showToast("Failed to unlink: " + err);
@@ -1254,7 +1319,7 @@ function App() {
       setContactLinkedChat(linkedChat);
       setShowParticipantDialog(true);
       // A shadow contact may have just been created — refresh the linked-status icons
-      refreshParticipantBadges(currentGroupParticipantNames());
+      loadGroupParticipants().then(refreshParticipantBadges);
     } catch (err) {
       console.error("Failed to resolve participant:", err);
       showToast("Failed to open participant profile: " + err);
@@ -1282,6 +1347,13 @@ function App() {
         loadProfile(selectedChat);
       }
       loadChatList();
+      // The rename may affect this contact's sender label and former-member/linked badges
+      // in the currently open group, so refresh them immediately instead of waiting for the
+      // next chat switch to pick up the change.
+      loadGroupParticipants().then(names => {
+        refreshSenderDisplayNames(names);
+        refreshParticipantBadges(names);
+      });
     } catch (err) {
       console.error("Failed to save contact profile:", err);
       showToast("Failed to save profile: " + err);
@@ -1320,7 +1392,7 @@ function App() {
       showToast("Linked!");
       if (selectedChat === chatId) loadProfile(selectedChat);
       loadChatList();
-      refreshParticipantBadges(currentGroupParticipantNames());
+      loadGroupParticipants().then(refreshParticipantBadges);
     } catch (err) {
       console.error("Failed to link contact:", err);
       showToast("Failed to link: " + err);
@@ -1337,7 +1409,7 @@ function App() {
       showToast("Unlinked");
       if (previouslyLinkedChatId && selectedChat === previouslyLinkedChatId) loadProfile(selectedChat);
       loadChatList();
-      refreshParticipantBadges(currentGroupParticipantNames());
+      loadGroupParticipants().then(refreshParticipantBadges);
     } catch (err) {
       console.error("Failed to unlink contact:", err);
       showToast("Failed to unlink: " + err);
@@ -1549,21 +1621,24 @@ function App() {
           await loadChatList();
           await refreshChatSearch();
           setShowStartScreen(false);
-          if (currentChat) {
-            // Always refresh currently open chat in case it was merged/updated
-            console.log("[IMPORT] Reloading messages and profile for chat:", currentChat);
-            await loadMessages(currentChat);
-            await loadProfile(currentChat);
-            invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
-            console.log("[IMPORT] Chat refresh complete");
-          } else if (importedIds.length > 0) {
-            // No chat open, select the last imported one
-            const targetId = importedIds[importedIds.length - 1];
-            setSelectedChat(targetId);
-            setSelectedMessageIndices(new Set());
-            setMultiSelectMode(false);
-            setLastSelectedIndex(null);
-            setLastLongPressedIndex(null);
+          {
+            const targetId = importedIds.length > 0 ? importedIds[importedIds.length - 1] : null;
+            if (targetId && targetId !== currentChat) {
+              // Always switch to the newly imported chat, even if a different one was already open
+              setSelectedChat(targetId);
+              setSelectedMessageIndices(new Set());
+              setMultiSelectMode(false);
+              setLastSelectedIndex(null);
+              setLastLongPressedIndex(null);
+            } else if (currentChat) {
+              // Nothing new to switch to, or the import updated the chat that's already open —
+              // refresh explicitly since setSelectedChat to an unchanged id won't retrigger the load effect
+              console.log("[IMPORT] Reloading messages and profile for chat:", currentChat);
+              await loadMessages(currentChat);
+              await loadProfile(currentChat);
+              invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
+              console.log("[IMPORT] Chat refresh complete");
+            }
           }
           showToast(`Imported ${importedIds.length} chat(s)`);
           checkPendingAutoLinks();
@@ -1628,20 +1703,24 @@ function App() {
       await loadChatList();
       await refreshChatSearch();
       setShowStartScreen(false);
-      if (selectedChat) {
-        // Always refresh currently open chat in case it was merged/updated
-        console.log("[DESKTOP IMPORT] Reloading messages and profile for chat:", selectedChat);
-        await loadMessages(selectedChat);
-        await loadProfile(selectedChat);
-        invoke<string>("get_media_base_dir", { chatId: selectedChat }).then(setMediaBaseDir);
-        console.log("[DESKTOP IMPORT] Chat refresh complete");
-      } else if (importedIds.length === 1) {
-        // No chat open, select the imported one if only one was imported
-        setSelectedChat(importedIds[0]);
-        setSelectedMessageIndices(new Set());
-        setMultiSelectMode(false);
-        setLastSelectedIndex(null);
-        setLastLongPressedIndex(null);
+      {
+        const targetId = importedIds.length > 0 ? importedIds[importedIds.length - 1] : null;
+        if (targetId && targetId !== selectedChat) {
+          // Always switch to the newly imported chat, even if a different one was already open
+          setSelectedChat(targetId);
+          setSelectedMessageIndices(new Set());
+          setMultiSelectMode(false);
+          setLastSelectedIndex(null);
+          setLastLongPressedIndex(null);
+        } else if (selectedChat) {
+          // Nothing new to switch to, or the import updated the chat that's already open —
+          // refresh explicitly since setSelectedChat to an unchanged id won't retrigger the load effect
+          console.log("[DESKTOP IMPORT] Reloading messages and profile for chat:", selectedChat);
+          await loadMessages(selectedChat);
+          await loadProfile(selectedChat);
+          invoke<string>("get_media_base_dir", { chatId: selectedChat }).then(setMediaBaseDir);
+          console.log("[DESKTOP IMPORT] Chat refresh complete");
+        }
       }
       checkPendingAutoLinks();
     } catch (err) {
@@ -1670,21 +1749,24 @@ function App() {
       await loadChatList();
       await refreshChatSearch();
       setShowStartScreen(false);
-      if (currentChat) {
-        // Always refresh currently open chat in case it was merged/updated
-        console.log("[SHARE IMPORT] Reloading messages and profile for chat:", currentChat);
-        await loadMessages(currentChat);
-        await loadProfile(currentChat);
-        invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
-        console.log("[SHARE IMPORT] Chat refresh complete");
-      } else if (chatIds.length > 0) {
-        // No chat open, select the last imported one
-        const targetId = chatIds[chatIds.length - 1];
-        setSelectedChat(targetId);
-        setSelectedMessageIndices(new Set());
-        setMultiSelectMode(false);
-        setLastSelectedIndex(null);
-        setLastLongPressedIndex(null);
+      {
+        const targetId = chatIds.length > 0 ? chatIds[chatIds.length - 1] : null;
+        if (targetId && targetId !== currentChat) {
+          // Always switch to the newly imported chat, even if a different one was already open
+          setSelectedChat(targetId);
+          setSelectedMessageIndices(new Set());
+          setMultiSelectMode(false);
+          setLastSelectedIndex(null);
+          setLastLongPressedIndex(null);
+        } else if (currentChat) {
+          // Nothing new to switch to, or the import updated the chat that's already open —
+          // refresh explicitly since setSelectedChat to an unchanged id won't retrigger the load effect
+          console.log("[SHARE IMPORT] Reloading messages and profile for chat:", currentChat);
+          await loadMessages(currentChat);
+          await loadProfile(currentChat);
+          invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
+          console.log("[SHARE IMPORT] Chat refresh complete");
+        }
       }
       setImportProgress({ current: 1, total: 1 });
       checkPendingAutoLinks();
@@ -2083,7 +2165,8 @@ function MessageRenderer({
   disableInteractions = false,
   hideExpandButton = false,
   onTagSaved,
-  showToast
+  showToast,
+  senderDisplayNames = {}
 }: {
   msg: Message;
   idx: number;
@@ -2098,6 +2181,7 @@ function MessageRenderer({
   openChatLightbox: (data: any) => void;
   disableInteractions?: boolean;
   hideExpandButton?: boolean;
+  senderDisplayNames?: Record<string, string>;
   onTagSaved?: (patch: Partial<Message>) => void;
   showToast?: (message: string) => void;
 }) {
@@ -2126,7 +2210,7 @@ function MessageRenderer({
       }}
     >
       {selectedChatData?.is_group && (
-        <span className="sender-name">{msg.sender}{isMe ? " (You)" : ""}</span>
+        <span className="sender-name">{isMe ? msg.sender : (senderDisplayNames[msg.sender] ?? msg.sender)}{isMe ? " (You)" : ""}</span>
       )}
       {msg.type === "image" && msg.media && (
         <div className="media-content image" onClick={disableInteractions ? undefined : (e) => {
@@ -2270,7 +2354,8 @@ function FavoritesGallery({
   setSelectedMessageIndices,
   highlightedIndices,
   jumpedIndex,
-  openChatLightbox
+  openChatLightbox,
+  senderDisplayNames = {}
 }: {
   messages: Message[];
   chatId: string;
@@ -2283,6 +2368,7 @@ function FavoritesGallery({
   highlightedIndices: Set<number>;
   jumpedIndex: number | null;
   openChatLightbox: (data: any) => void;
+  senderDisplayNames?: Record<string, string>;
 }) {
   const messageRefs = useRef<(HTMLElement | null)[]>([]);
   return (
@@ -2309,6 +2395,7 @@ function FavoritesGallery({
                 highlightedIndices={highlightedIndices}
                 jumpedIndex={jumpedIndex}
                 openChatLightbox={openChatLightbox}
+                senderDisplayNames={senderDisplayNames}
                 disableInteractions={true}
                 hideExpandButton={true}
               />
@@ -2385,7 +2472,6 @@ useEffect(() => {
   function getInitials(name: string): string {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   }
-  const selectedChatData = chats.find(c => c.id === selectedChat);
   return (
     <>
       {/* Toast Notification - always visible */}
@@ -2527,13 +2613,7 @@ useEffect(() => {
       {showGroupDialog && selectedChatData?.is_group && (
         <GroupParticipantsDialog
           chatName={stripChatPrefix(selectedChatData.name)}
-          participants={[
-            ...new Set(
-              messages
-                .filter(m => m.type !== "system" && m.sender !== "System")
-                .map(m => m.sender)
-            )
-          ].sort()}
+          participants={allParticipantNames}
           photoPath={pendingProfilePhoto ?? profile?.photo_path}
           onPhotoUpload={handleProfilePhotoUpload}
           onCancel={() => { setShowGroupDialog(false); setPendingProfilePhoto(null); }}
@@ -2543,6 +2623,7 @@ useEffect(() => {
           linkedParticipants={linkedParticipants}
           formerMembers={formerMembers}
           onEditParticipant={handleEditParticipant}
+          displayNameOverrides={senderDisplayNames}
         />
       )}
       {showParticipantDialog && editingContact && (
@@ -2918,7 +2999,7 @@ useEffect(() => {
             onClick={toggleTheme}
             title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
           >
-            {theme === "light" ? "🌙" : "☀️"} {theme === "light" ? "Dark" : "Light"}
+            {theme === "light" ? "🌙 Dark" : "☀️ Light"}
           </button>
           <button className="toolbar-btn" onClick={handleImport} disabled={importing}>
             {importing ? "…" : "+ Import"}
@@ -3045,13 +3126,7 @@ useEffect(() => {
                     <ProfileImage photoPath={profile.photo_path} alt="Group" className="chat-avatar large chat-avatar--photo" />
                   ) : (
                     <GroupAvatar
-                      participants={[
-                        ...new Set(
-                          messages
-                            .filter(m => m.type !== "system" && m.sender !== "System")
-                            .map(m => m.sender)
-                        )
-                      ]}
+                      participants={allParticipantNames}
                       size="large"
                     />
                   )
@@ -3175,7 +3250,7 @@ useEffect(() => {
               </button>
               <button
                 className="profile-btn"
-                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); refreshParticipantBadges(currentGroupParticipantNames()); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } }}
+                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); loadGroupParticipants().then(refreshParticipantBadges); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } }}
                 title={selectedChatData?.is_group ? "View participants" : "Edit profile"}
               >
                 <svg viewBox="0 0 24 24" className="profile-btn-icon">
@@ -3426,7 +3501,7 @@ useEffect(() => {
                         ) : (
                           <div
                             ref={(el) => { messageRefs.current[idx] = el; }}
-                            className={`message ${isMe ? "sent" : "received"}${msg.type === "sticker" ? " sticker-message" : ""}${highlightedIndices.has(idx) ? " search-match" : ""}${jumpedIndex === idx ? " jumped" : ""}${selectedMessageIndices.has(idx) ? " selected" : ""}`}
+                            className={`message ${isMe ? "sent" : "received"}${msg.type === "sticker" ? " sticker-message" : ""}${highlightedIndices.has(idx) ? " search-match" : ""}${jumpedIndex === idx ? " jumped" : ""}${selectedMessageIndices.has(idx) ? " selected" : ""}${multiSelectMode && lastSelectedIndex === idx ? " selection-anchor" : ""}`}
                             onMouseDown={(_e) => {
                               // Start long-press timer
                               const timer = setTimeout(() => {
@@ -3501,10 +3576,18 @@ useEffect(() => {
                             }}
                             onClick={(e) => {
                               if (touchScrollingRef.current) return;
+                              // The click that naturally follows a long-press's mousedown/mouseup
+                              // would otherwise immediately re-toggle (and thus undo) the selection
+                              // the long-press just made, since multiSelectMode is already true by
+                              // the time this fires.
+                              if (lastLongPressedIndex === idx) {
+                                setLastLongPressedIndex(null);
+                                return;
+                              }
                               if (!e.defaultPrevented) {
                                 if (multiSelectMode) {
-                                  // In multi-select mode, clicks do nothing - only long-press works
                                   e.preventDefault();
+                                  selectMessageIndex(idx, e.shiftKey);
                                   return;
                                 }
                                 // Normal click does nothing in non-multi-select mode
@@ -3512,7 +3595,7 @@ useEffect(() => {
                             }}
                           >
                             {selectedChatData?.is_group && (
-                              <span className="sender-name">{msg.sender}{isMe ? " (You)" : ""}</span>
+                              <span className="sender-name">{isMe ? msg.sender : (senderDisplayNames[msg.sender] ?? msg.sender)}{isMe ? " (You)" : ""}</span>
                             )}
                             {msg.type === "image" && msg.media && (
                               <div className="media-content image" onClick={(e) => {
@@ -3526,18 +3609,7 @@ useEffect(() => {
                                 if (multiSelectMode) {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  const newSelected = new Set(selectedMessageIndices);
-                                  if (newSelected.has(idx)) {
-                                    newSelected.delete(idx);
-                                    if (newSelected.size === 0) {
-                                      setLastSelectedIndex(null);
-                                      setMultiSelectMode(false);
-                                    }
-                                  } else {
-                                    newSelected.add(idx);
-                                    setLastSelectedIndex(idx);
-                                  }
-                                  setSelectedMessageIndices(newSelected);
+                                  selectMessageIndex(idx, e.shiftKey);
                                 } else {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -3574,18 +3646,7 @@ useEffect(() => {
                                 if (multiSelectMode) {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  const newSelected = new Set(selectedMessageIndices);
-                                  if (newSelected.has(idx)) {
-                                    newSelected.delete(idx);
-                                    if (newSelected.size === 0) {
-                                      setLastSelectedIndex(null);
-                                      setMultiSelectMode(false);
-                                    }
-                                  } else {
-                                    newSelected.add(idx);
-                                    setLastSelectedIndex(idx);
-                                  }
-                                  setSelectedMessageIndices(newSelected);
+                                  selectMessageIndex(idx, e.shiftKey);
                                 } else {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -3616,18 +3677,7 @@ useEffect(() => {
                                 if (multiSelectMode) {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  const newSelected = new Set(selectedMessageIndices);
-                                  if (newSelected.has(idx)) {
-                                    newSelected.delete(idx);
-                                    if (newSelected.size === 0) {
-                                      setLastSelectedIndex(null);
-                                      setMultiSelectMode(false);
-                                    }
-                                  } else {
-                                    newSelected.add(idx);
-                                    setLastSelectedIndex(idx);
-                                  }
-                                  setSelectedMessageIndices(newSelected);
+                                  selectMessageIndex(idx, e.shiftKey);
                                 } else {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -3745,6 +3795,7 @@ useEffect(() => {
                   highlightedIndices={highlightedIndices}
                   jumpedIndex={jumpedIndex}
                   openChatLightbox={openChatLightbox}
+                  senderDisplayNames={senderDisplayNames}
                 />
               )}
               {/* Jump buttons for chat */}
