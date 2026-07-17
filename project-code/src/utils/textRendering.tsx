@@ -1,5 +1,16 @@
 import type { ReactNode } from "react";
 
+// Returns a substring of `text` centered on the first match of `query`, so a long message
+// whose match falls past a fixed character cutoff doesn't get truncated into a preview that
+// never shows the part that actually matched.
+export function getSearchSnippet(text: string, query: string, contextChars = 50): string {
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text.length > 100 ? text.slice(0, 100) + "…" : text;
+  const start = Math.max(0, idx - contextChars);
+  const end = Math.min(text.length, idx + query.length + contextChars);
+  return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
+}
+
 export function highlightText(text: string, query: string): ReactNode {
   if (!query.trim()) return text;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

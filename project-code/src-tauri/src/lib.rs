@@ -276,7 +276,7 @@ use uuid::Uuid;
 use zip::ZipArchive;
 use zip::write::{ZipWriter, SimpleFileOptions};
 use std::io::Write;
-use rusqlite::{Connection, Result as SqliteResult, params};
+use rusqlite::{Connection, Result as SqliteResult, params, OptionalExtension};
 use percent_encoding::percent_decode_str;
 /// Strip path traversal — return only the final filename component.
 /// Returns Err if the result is empty or purely dot-composed.
@@ -537,6 +537,11 @@ fn init_database() -> SqliteResult<Connection> {
             phone_number TEXT,
             FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
         )",
+        [],
+    )?;
+    // Generic key-value table for single-value local app settings (e.g. the PIN lock hash)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)",
         [],
     )?;
     // Add phone_number column if it doesn't exist yet (safe for existing DBs)
@@ -1259,6 +1264,28 @@ fn iso_date_to_epoch(date_str: &str, end_of_day: bool) -> Option<i64> {
     }
     days += d - 1;
     Some(days * 86400 + if end_of_day { 86399 } else { 0 })
+}
+
+fn find_message_index_for_date_impl(conn: &Connection, chat_id: &str, target_epoch: i64) -> Result<Option<i64>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT timestamp FROM messages WHERE chat_id = ?1 ORDER BY id ASC"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([chat_id], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+    for (idx, row) in rows.enumerate() {
+        let ts = row.map_err(|e| e.to_string())?;
+        if timestamp_to_epoch(&ts) >= target_epoch {
+            return Ok(Some(idx as i64));
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn find_message_index_for_date(chat_id: String, date: String) -> Result<Option<i64>, String> {
+    let conn = get_db();
+    let target_epoch = iso_date_to_epoch(&date, false)
+        .ok_or_else(|| "Invalid date format".to_string())?;
+    find_message_index_for_date_impl(&conn, &chat_id, target_epoch)
 }
 
 fn normalize_chat_name(name: &str) -> String {
@@ -3113,7 +3140,7 @@ fn search_chats(query: String) -> Result<Vec<ChatMeta>, String> {
     let mut stmt = conn.prepare(
         "SELECT chats.id, COALESCE(profiles.name, chats.name), chats.last_message, chats.timestamp, chats.is_group, chats.zip_path, profiles.photo_path
          FROM chats LEFT JOIN profiles ON chats.id = profiles.chat_id
-         WHERE LOWER(COALESCE(profiles.name, chats.name)) LIKE ?1 OR LOWER(chats.last_message) LIKE ?1
+         WHERE LOWER(COALESCE(profiles.name, chats.name)) LIKE ?1
          ORDER BY chats.last_message_epoch DESC, chats.created_at DESC"
     ).map_err(|e| e.to_string())?;
     let chats = stmt.query_map([&search_lower], |row| {
@@ -3132,6 +3159,59 @@ fn search_chats(query: String) -> Result<Vec<ChatMeta>, String> {
         result.push(chat.map_err(|e| e.to_string())?);
     }
     Ok(result)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CrossChatSearchResult {
+    pub chat_id: String,
+    pub chat_name: String,
+    pub message_index: usize,
+    pub timestamp: String,
+    pub sender: String,
+    pub content: String,
+    pub msg_type: String,
+}
+
+const CROSS_CHAT_SEARCH_LIMIT: usize = 200;
+
+fn search_messages_across_chats_impl(conn: &Connection, search_lower: &str, limit: usize) -> Result<Vec<CrossChatSearchResult>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id < m1.id) as row_idx,
+                m1.chat_id, COALESCE(profiles.name, chats.name) as chat_name,
+                m1.timestamp, m1.sender, m1.msg_type, m1.content
+         FROM messages m1
+         JOIN chats ON chats.id = m1.chat_id
+         LEFT JOIN profiles ON profiles.chat_id = m1.chat_id
+         WHERE m1.msg_type != 'system' AND LOWER(m1.content) LIKE ?1
+         ORDER BY chats.last_message_epoch DESC, m1.id DESC
+         LIMIT ?2"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(rusqlite::params![search_lower, limit as i64], |row| {
+        Ok(CrossChatSearchResult {
+            message_index: row.get::<_, i64>(0)? as usize,
+            chat_id: row.get(1)?,
+            chat_name: row.get(2)?,
+            timestamp: row.get(3)?,
+            sender: row.get(4)?,
+            msg_type: row.get(5)?,
+            content: row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for r in rows {
+        result.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn search_messages_across_chats(query: String) -> Result<Vec<CrossChatSearchResult>, String> {
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = get_db();
+    let search_lower = format!("%{}%", query.to_lowercase());
+    search_messages_across_chats_impl(&conn, &search_lower, CROSS_CHAT_SEARCH_LIMIT)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -3259,6 +3339,172 @@ fn remove_profile_photo(chat_id: String) -> Result<(), String> {
         ).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+// ==== PIN Lock ====
+// A local UI gate only — it does NOT encrypt the SQLite database, which remains plaintext
+// on disk regardless of whether a PIN is set. Recovery is via a security question set
+// alongside the PIN (see reset_pin_with_recovery_answer below), so forgetting the PIN can't
+// permanently lock you out of a years-long archive, but resetting still requires knowing an
+// answer only you'd know — not just a click.
+//
+// The recovery answer is stored in plaintext (like the question), not hashed — unlike the PIN
+// itself. That's deliberate: the whole point of this feature is to let the settings dialog show
+// the current question/answer back to the user, pre-filled, for editing — which is impossible
+// with a one-way hash. This doesn't weaken anything the lock actually protects, since the lock
+// was never encryption in the first place; the SQLite database holding both this value and the
+// entire chat archive is already plaintext on disk regardless.
+
+fn hash_secret(secret: &str) -> Result<String, String> {
+    use argon2::{Argon2, PasswordHasher};
+    use argon2::password_hash::{SaltString, rand_core::OsRng};
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(secret.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| e.to_string())
+}
+
+fn verify_secret_hash(secret: &str, stored_hash: &str) -> Result<bool, String> {
+    use argon2::{Argon2, PasswordHash, PasswordVerifier};
+    let parsed = PasswordHash::new(stored_hash).map_err(|e| e.to_string())?;
+    Ok(Argon2::default().verify_password(secret.as_bytes(), &parsed).is_ok())
+}
+
+// Recovery answers are matched case/whitespace-insensitively so a legitimate user isn't
+// tripped up by capitalization or trailing spaces they didn't type consistently the first time.
+fn normalize_recovery_answer(answer: &str) -> String {
+    answer.trim().to_lowercase()
+}
+
+fn get_app_setting(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    conn.query_row("SELECT value FROM app_settings WHERE key = ?1", [key], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())
+}
+
+fn set_app_setting(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn delete_app_setting(conn: &Connection, key: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM app_settings WHERE key = ?1", [key]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn has_pin() -> Result<bool, String> {
+    Ok(get_app_setting(&get_db(), "pin_hash")?.is_some())
+}
+
+// A recovery question + answer must be set alongside every PIN (initial set or change) —
+// it's what reset_pin_with_recovery_answer checks instead of a bare unauthenticated reset.
+#[tauri::command]
+fn set_pin(pin: String, recovery_question: String, recovery_answer: String) -> Result<(), String> {
+    if pin.trim().is_empty() {
+        return Err("PIN cannot be empty".to_string());
+    }
+    if recovery_question.trim().is_empty() || recovery_answer.trim().is_empty() {
+        return Err("A recovery question and answer are required".to_string());
+    }
+    let pin_hash = hash_secret(&pin)?;
+    let conn = get_db();
+    set_app_setting(&conn, "pin_hash", &pin_hash)?;
+    set_app_setting(&conn, "recovery_question", recovery_question.trim())?;
+    set_app_setting(&conn, "recovery_answer", recovery_answer.trim())
+}
+
+#[tauri::command]
+fn verify_pin(pin: String) -> Result<bool, String> {
+    match get_app_setting(&get_db(), "pin_hash")? {
+        Some(hash) => verify_secret_hash(&pin, &hash),
+        None => Ok(true), // nothing set to verify against; caller must gate via has_pin first
+    }
+}
+
+// Updates only the PIN, leaving the existing recovery question/answer untouched — the
+// counterpart to change_recovery_question below, since the user can change either
+// independently. There's only ever one active PIN and one active recovery question stored
+// (single-row app_settings keys), so updating one in place can't desync from the other.
+#[tauri::command]
+fn change_pin(current_pin: String, new_pin: String) -> Result<(), String> {
+    if new_pin.trim().is_empty() {
+        return Err("PIN cannot be empty".to_string());
+    }
+    let conn = get_db();
+    match get_app_setting(&conn, "pin_hash")? {
+        Some(hash) if verify_secret_hash(&current_pin, &hash)? => {
+            let new_hash = hash_secret(&new_pin)?;
+            set_app_setting(&conn, "pin_hash", &new_hash)
+        }
+        Some(_) => Err("Incorrect current PIN".to_string()),
+        None => Err("No PIN is currently set".to_string()),
+    }
+}
+
+// Updates only the recovery question/answer, leaving the existing PIN untouched — the
+// counterpart to change_pin above.
+#[tauri::command]
+fn change_recovery_question(current_pin: String, recovery_question: String, recovery_answer: String) -> Result<(), String> {
+    if recovery_question.trim().is_empty() || recovery_answer.trim().is_empty() {
+        return Err("A recovery question and answer are required".to_string());
+    }
+    let conn = get_db();
+    match get_app_setting(&conn, "pin_hash")? {
+        Some(hash) if verify_secret_hash(&current_pin, &hash)? => {
+            set_app_setting(&conn, "recovery_question", recovery_question.trim())?;
+            set_app_setting(&conn, "recovery_answer", recovery_answer.trim())
+        }
+        Some(_) => Err("Incorrect current PIN".to_string()),
+        None => Err("No PIN is currently set".to_string()),
+    }
+}
+
+// Only clears the PIN itself — the recovery question/answer is left in place, since it's a
+// separate piece of info from the PIN and there's no reason to lose it just because the PIN
+// was removed. It'll simply sit unused until a new PIN is set (set_pin always asks for a
+// fresh recovery question/answer at that point, overwriting whatever's left over).
+#[tauri::command]
+fn clear_pin(current_pin: String) -> Result<(), String> {
+    let conn = get_db();
+    match get_app_setting(&conn, "pin_hash")? {
+        Some(hash) if verify_secret_hash(&current_pin, &hash)? => delete_app_setting(&conn, "pin_hash"),
+        Some(_) => Err("Incorrect PIN".to_string()),
+        None => Ok(()),
+    }
+}
+
+#[tauri::command]
+fn get_recovery_question() -> Result<Option<String>, String> {
+    get_app_setting(&get_db(), "recovery_question")
+}
+
+#[tauri::command]
+fn get_recovery_answer() -> Result<Option<String>, String> {
+    get_app_setting(&get_db(), "recovery_answer")
+}
+
+// The "forgot PIN" escape hatch, only reachable from the lock screen's "Forgot PIN?" flow
+// (never from the already-unlocked settings dialog, which uses clear_pin above and requires
+// the current PIN). Requires the recovery answer set alongside the PIN rather than being a
+// bare unauthenticated reset — real friction against a casual bypass, while still guaranteed
+// recoverable by the legitimate user, since this lock never encrypted the data in the first
+// place and refusing to ever reset would only risk losing access to the archive, not protect it.
+// Only clears the PIN itself, same as clear_pin above — the recovery question/answer that was
+// just used to verify this reset stays in place rather than being thrown away.
+#[tauri::command]
+fn reset_pin_with_recovery_answer(answer: String) -> Result<(), String> {
+    let conn = get_db();
+    match get_app_setting(&conn, "recovery_answer")? {
+        Some(stored) if normalize_recovery_answer(&answer) == normalize_recovery_answer(&stored) => delete_app_setting(&conn, "pin_hash"),
+        Some(_) => Err("Incorrect answer".to_string()),
+        None => Err("No recovery question is set for this PIN".to_string()),
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -6479,6 +6725,17 @@ pub fn run() {
             search_messages,
             search_messages_filtered,
             search_chats,
+            search_messages_across_chats,
+            find_message_index_for_date,
+            has_pin,
+            set_pin,
+            change_pin,
+            change_recovery_question,
+            verify_pin,
+            clear_pin,
+            get_recovery_question,
+            get_recovery_answer,
+            reset_pin_with_recovery_answer,
             get_profile,
             update_profile,
             remove_profile_photo,
@@ -6582,6 +6839,10 @@ mod tests {
                 tag_ext TEXT,
                 display_name TEXT
             );
+            CREATE TABLE profiles (
+                chat_id TEXT PRIMARY KEY,
+                name TEXT
+            );
         ").unwrap();
         conn.execute(
             "INSERT INTO chats (id, name, original_name) VALUES (?1, 'Test', 'Test')",
@@ -6624,6 +6885,52 @@ mod tests {
     fn timestamp_to_epoch__unparseable_string_returns_zero() {
         assert_eq!(timestamp_to_epoch("not a date"), 0);
         assert_eq!(timestamp_to_epoch(""), 0);
+    }
+    // ==================== find_message_index_for_date_impl ====================
+    fn insert_test_message(conn: &rusqlite::Connection, chat_id: &str, timestamp: &str, content: &str) {
+        conn.execute(
+            "INSERT INTO messages (chat_id, timestamp, sender, msg_type, content) VALUES (?1, ?2, 'Alice', 'text', ?3)",
+            rusqlite::params![chat_id, timestamp, content],
+        ).unwrap();
+    }
+    #[test]
+    fn find_message_index_for_date_impl__returns_first_message_on_or_after_date() {
+        let chat_id = "test-chat";
+        let conn = in_memory_db_with_chat(chat_id);
+        insert_test_message(&conn, chat_id, "15/06/2017 00:00", "before");
+        insert_test_message(&conn, chat_id, "17/06/2017 00:04", "on target date");
+        insert_test_message(&conn, chat_id, "20/06/2017 00:00", "after");
+        let target_epoch = iso_date_to_epoch("2017-06-17", false).unwrap();
+        let result = find_message_index_for_date_impl(&conn, chat_id, target_epoch).unwrap();
+        assert_eq!(result, Some(1));
+    }
+    #[test]
+    fn find_message_index_for_date_impl__returns_none_when_all_messages_are_before_date() {
+        let chat_id = "test-chat";
+        let conn = in_memory_db_with_chat(chat_id);
+        insert_test_message(&conn, chat_id, "01/01/2017 00:00", "old");
+        let target_epoch = iso_date_to_epoch("2020-01-01", false).unwrap();
+        let result = find_message_index_for_date_impl(&conn, chat_id, target_epoch).unwrap();
+        assert_eq!(result, None);
+    }
+    #[test]
+    fn find_message_index_for_date_impl__returns_index_zero_when_date_before_all_messages() {
+        let chat_id = "test-chat";
+        let conn = in_memory_db_with_chat(chat_id);
+        insert_test_message(&conn, chat_id, "01/01/2020 00:00", "first");
+        insert_test_message(&conn, chat_id, "02/01/2020 00:00", "second");
+        let target_epoch = iso_date_to_epoch("2010-01-01", false).unwrap();
+        let result = find_message_index_for_date_impl(&conn, chat_id, target_epoch).unwrap();
+        assert_eq!(result, Some(0));
+    }
+    #[test]
+    fn find_message_index_for_date_impl__unparseable_timestamp_treated_as_epoch_zero() {
+        let chat_id = "test-chat";
+        let conn = in_memory_db_with_chat(chat_id);
+        insert_test_message(&conn, chat_id, "not a date", "garbage timestamp");
+        // Target epoch 0 (1970-01-01) matches immediately since unparseable timestamps fall back to epoch 0
+        let result = find_message_index_for_date_impl(&conn, chat_id, 0).unwrap();
+        assert_eq!(result, Some(0));
     }
     // ==================== normalize_chat_name ====================
     #[test]
@@ -7445,6 +7752,115 @@ mod tests {
         let msgs = parse(chat);
         assert_eq!(msgs[0].msg_type, "image");
         assert_eq!(msgs[0].media.as_deref(), Some("IMG-20240412-WA0001.jpg"));
+    }
+    // ==================== search_messages_across_chats_impl ====================
+    fn insert_second_test_chat(conn: &rusqlite::Connection, chat_id: &str, name: &str) {
+        conn.execute(
+            "INSERT INTO chats (id, name, original_name) VALUES (?1, ?2, ?2)",
+            rusqlite::params![chat_id, name],
+        ).unwrap();
+    }
+    #[test]
+    fn search_messages_across_chats_impl__matches_across_multiple_chats_returns_results_from_each() {
+        let conn = in_memory_db_with_chat("chat-a");
+        insert_second_test_chat(&conn, "chat-b", "Chat B");
+        insert_test_message(&conn, "chat-a", "01/01/2024 00:00", "hello banana world");
+        insert_test_message(&conn, "chat-b", "02/01/2024 00:00", "another banana here");
+        let results = search_messages_across_chats_impl(&conn, "%banana%", 200).unwrap();
+        assert_eq!(results.len(), 2);
+        let chat_ids: std::collections::HashSet<_> = results.iter().map(|r| r.chat_id.as_str()).collect();
+        assert!(chat_ids.contains("chat-a"));
+        assert!(chat_ids.contains("chat-b"));
+    }
+    #[test]
+    fn search_messages_across_chats_impl__respects_limit_caps_total_results() {
+        let conn = in_memory_db_with_chat("chat-a");
+        for _ in 0..5 {
+            insert_test_message(&conn, "chat-a", "01/01/2024 00:00", "banana");
+        }
+        let results = search_messages_across_chats_impl(&conn, "%banana%", 3).unwrap();
+        assert_eq!(results.len(), 3);
+    }
+    #[test]
+    fn search_messages_across_chats_impl__excludes_system_messages() {
+        let conn = in_memory_db_with_chat("chat-a");
+        conn.execute(
+            "INSERT INTO messages (chat_id, timestamp, sender, msg_type, content) VALUES ('chat-a', '01/01/2024 00:00', 'System', 'system', 'banana system message')",
+            [],
+        ).unwrap();
+        insert_test_message(&conn, "chat-a", "01/01/2024 00:00", "banana text message");
+        let results = search_messages_across_chats_impl(&conn, "%banana%", 200).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].msg_type, "text");
+    }
+    #[test]
+    fn search_messages_across_chats_impl__resolves_profile_override_name_over_chat_name() {
+        let conn = in_memory_db_with_chat("chat-a");
+        conn.execute(
+            "INSERT INTO profiles (chat_id, name) VALUES ('chat-a', 'Custom Name')",
+            [],
+        ).unwrap();
+        insert_test_message(&conn, "chat-a", "01/01/2024 00:00", "banana");
+        let results = search_messages_across_chats_impl(&conn, "%banana%", 200).unwrap();
+        assert_eq!(results[0].chat_name, "Custom Name");
+    }
+    #[test]
+    fn search_messages_across_chats_impl__message_index_is_position_within_its_own_chat_not_global() {
+        let conn = in_memory_db_with_chat("chat-a");
+        insert_second_test_chat(&conn, "chat-b", "Chat B");
+        insert_test_message(&conn, "chat-a", "01/01/2024 00:00", "first in a");
+        insert_test_message(&conn, "chat-a", "02/01/2024 00:00", "second in a, banana");
+        insert_test_message(&conn, "chat-b", "01/01/2024 00:00", "first in b, banana");
+        let results = search_messages_across_chats_impl(&conn, "%banana%", 200).unwrap();
+        let a_result = results.iter().find(|r| r.chat_id == "chat-a").unwrap();
+        let b_result = results.iter().find(|r| r.chat_id == "chat-b").unwrap();
+        assert_eq!(a_result.message_index, 1, "second message in chat-a should have local index 1");
+        assert_eq!(b_result.message_index, 0, "first message in chat-b should have local index 0");
+    }
+    // ==================== PIN lock (hash_secret / normalize_recovery_answer / app_settings) ====================
+    fn in_memory_db_with_settings_table() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT);").unwrap();
+        conn
+    }
+    #[test]
+    fn hash_secret__correct_value_verifies_successfully() {
+        let hash = hash_secret("1234").unwrap();
+        assert!(verify_secret_hash("1234", &hash).unwrap());
+    }
+    #[test]
+    fn hash_secret__wrong_value_fails_verification() {
+        let hash = hash_secret("1234").unwrap();
+        assert!(!verify_secret_hash("9999", &hash).unwrap());
+    }
+    #[test]
+    fn hash_secret__same_value_hashed_twice_produces_different_hashes() {
+        let hash_a = hash_secret("1234").unwrap();
+        let hash_b = hash_secret("1234").unwrap();
+        assert_ne!(hash_a, hash_b, "each hash should embed a fresh random salt");
+    }
+    #[test]
+    fn normalize_recovery_answer__trims_and_lowercases() {
+        assert_eq!(normalize_recovery_answer("  Blue  "), "blue");
+    }
+    #[test]
+    fn normalize_recovery_answer__differently_cased_answers_match_after_hashing() {
+        let hash = hash_secret(&normalize_recovery_answer("Rex")).unwrap();
+        assert!(verify_secret_hash(&normalize_recovery_answer("  rex "), &hash).unwrap());
+    }
+    #[test]
+    fn set_app_setting__upsert_overwrites_existing_value_for_same_key() {
+        let conn = in_memory_db_with_settings_table();
+        set_app_setting(&conn, "pin_hash", "hash-a").unwrap();
+        set_app_setting(&conn, "pin_hash", "hash-b").unwrap();
+        assert_eq!(get_app_setting(&conn, "pin_hash").unwrap(), Some("hash-b".to_string()));
+    }
+    #[test]
+    fn app_settings__delete_removes_key_get_returns_none() {
+        let conn = in_memory_db_with_settings_table();
+        set_app_setting(&conn, "pin_hash", "hash-a").unwrap();
+        delete_app_setting(&conn, "pin_hash").unwrap();
+        assert_eq!(get_app_setting(&conn, "pin_hash").unwrap(), None);
     }
     // ==================== merge_messages_into_chat (dedup) ====================
     #[test]

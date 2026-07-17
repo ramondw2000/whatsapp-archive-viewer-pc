@@ -5,10 +5,10 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LazyMediaImage, useLazyVisibility, setMediaFallback, setToastCallback, showModuleToast } from "./LazyMediaImage";
 import { VirtualMessageList, VirtualMessageListRef } from "./VirtualMessageList";
-import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, type Contact, type AutoLinkEvent, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
+import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type CrossChatSearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, type Contact, type AutoLinkEvent, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
 import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
-import { createRenderMessageText, highlightText } from "./utils/textRendering";
+import { createRenderMessageText, highlightText, getSearchSnippet } from "./utils/textRendering";
 import { stripChatPrefix } from "./utils/stripChatPrefix";
 import { isNewerVersion } from "./utils/version";
 import { LoadingOverlay } from "./components/LoadingOverlay";
@@ -20,6 +20,8 @@ import { ExportSuccessDialog } from "./components/dialogs/ExportSuccessDialog";
 import { SuccessNotificationDialog } from "./components/dialogs/SuccessNotificationDialog";
 import { DeleteSuccessDialog } from "./components/dialogs/DeleteSuccessDialog";
 import { UsernameDialog } from "./components/dialogs/UsernameDialog";
+import { LockScreen } from "./components/dialogs/LockScreen";
+import { PinSettingsDialog } from "./components/dialogs/PinSettingsDialog";
 import { GroupParticipantsDialog } from "./components/dialogs/GroupParticipantsDialog";
 import { ProfileDialog } from "./components/dialogs/ProfileDialog";
 import { AutoLinkReviewDialog } from "./components/dialogs/AutoLinkReviewDialog";
@@ -647,8 +649,9 @@ function MediaGallery({
   );
 }
 
-function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
+function StartScreen({ onOpenChats, onLock, hasPinSet, locked, onUnlock, onPinReset }: { onOpenChats: () => void; onLock: () => void; hasPinSet: boolean; locked: boolean; onUnlock: () => void; onPinReset: () => void }) {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
   const [updateMessage, setUpdateMessage] = useState<{ title: string; message: string } | null>(null);
   // silent=true (startup auto-check): only ever surfaces an actual available update via
@@ -721,35 +724,64 @@ function StartScreen({ onOpenChats }: { onOpenChats: () => void }) {
   }, []);
   return (
     <>
-    <div className="start-screen">
+    <div className={`start-screen${locked ? ' start-screen--locked' : ''}`}>
       <div className="start-screen-header">
-        {updateInfo ? (
-          <button
-            onClick={() => openUrl(updateInfo.url).catch(console.error)}
-            className="check-updates-button update-available"
-          >
-            Update Available (v{updateInfo.version})
-          </button>
-        ) : (
+        {locked ? (
           <button
             className="check-updates-button"
-            onClick={handleCheckUpdates}
-            disabled={isCheckingUpdates}
-            title="Check for Updates"
+            onClick={() => setShowUnlockPrompt(true)}
+            title="Unlock the app"
           >
-            {isCheckingUpdates ? "Checking..." : "Check for Updates"}
+            🔓 Unlock
           </button>
+        ) : (
+          <>
+            {hasPinSet && (
+              <button
+                className="check-updates-button"
+                onClick={onLock}
+                title="Lock the app — a PIN will be required to open it again"
+              >
+                🔒 Lock
+              </button>
+            )}
+            {updateInfo ? (
+              <button
+                onClick={() => openUrl(updateInfo.url).catch(console.error)}
+                className="check-updates-button update-available"
+              >
+                Update Available (v{updateInfo.version})
+              </button>
+            ) : (
+              <button
+                className="check-updates-button"
+                onClick={handleCheckUpdates}
+                disabled={isCheckingUpdates}
+                title="Check for Updates"
+              >
+                {isCheckingUpdates ? "Checking..." : "Check for Updates"}
+              </button>
+            )}
+          </>
         )}
       </div>
       <div className="start-screen-content">
         <img src="/icon.svg" alt="App Logo" className="start-screen-logo" />
         <h1 className="start-screen-title">WhatsApp Archive Viewer</h1>
-        <button className="start-screen-button" onClick={onOpenChats}>
-          Open Chat Overview
-        </button>
+        {!locked && (
+          <button className="start-screen-button" onClick={onOpenChats}>
+            Open Chat Overview
+          </button>
+        )}
       </div>
     </div>
-    {updateMessage && (
+    {showUnlockPrompt && (
+      <LockScreen
+        onUnlock={() => { setShowUnlockPrompt(false); onUnlock(); }}
+        onPinReset={onPinReset}
+      />
+    )}
+    {updateMessage && !locked && (
       <div className="dialog-overlay" onClick={() => setUpdateMessage(null)}>
         <div className="dialog-content" onClick={e => e.stopPropagation()}>
           <button className="dialog-close-btn" onClick={() => setUpdateMessage(null)}>
@@ -791,6 +823,11 @@ function App() {
   const [importDetail, setImportDetail] = useState<{ messages: number; media: number; phase: string } | null>(null);
   const [username, setUsername] = useState<string>("");
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
+  // showLocked starts null ("still checking has_pin") rather than false, so the unlocked app
+  // never renders for one frame before the async has_pin() check resolves.
+  const [showLocked, setShowLocked] = useState<boolean | null>(null);
+  const [hasPinSet, setHasPinSet] = useState(false);
+  const [showPinSettingsDialog, setShowPinSettingsDialog] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
   );
@@ -852,6 +889,14 @@ function App() {
   const [chatSearchResults, setChatSearchResults] = useState<ChatMeta[]>([]);
   const [isSearchingChats, setIsSearchingChats] = useState(false);
   const [chatTypeFilter, setChatTypeFilter] = useState<"all" | "chats" | "groups">("all");
+  const [chatSearchMode, setChatSearchMode] = useState<"chats" | "messages">("chats");
+  const [crossChatResults, setCrossChatResults] = useState<CrossChatSearchResult[]>([]);
+  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+  const [pendingCrossChatJump, setPendingCrossChatJump] = useState<{ chatId: string; index: number } | null>(null);
+  const chatSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every new search so a slow, broad query (e.g. a single-letter search over a huge
+  // chat/message pool) can't resolve after a later, narrower one and clobber it with stale results.
+  const chatSearchRequestIdRef = useRef(0);
   // Message search state
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [messageSearchResults, setMessageSearchResults] = useState<SearchResult[]>([]);
@@ -956,6 +1001,9 @@ function App() {
   const [bgTab, setBgTab] = useState<"default" | "custom">("default");
   // Load username, theme and migrate chats on mount
   useEffect(() => {
+    invoke<boolean>("has_pin")
+      .then(has => { setHasPinSet(has); setShowLocked(has); })
+      .catch(() => setShowLocked(false));
     const stored = localStorage.getItem("whatsapp_username");
     if (stored) {
       setUsername(stored);
@@ -2011,23 +2059,89 @@ function App() {
     setDeleteDialog(null);
   }
   // Chat search function
-  async function handleChatSearch(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChatSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const query = e.target.value;
     setChatSearchQuery(query);
-    if (query.trim()) {
-      setIsSearchingChats(true);
-      try {
-        const results: ChatMeta[] = await invoke("search_chats", { query });
-        setChatSearchResults(results);
-      } catch (err) {
-        console.error("Chat search failed:", err);
+    if (chatSearchDebounceRef.current) clearTimeout(chatSearchDebounceRef.current);
+    if (!query.trim()) {
+      chatSearchRequestIdRef.current++;
+      if (chatSearchMode === "chats") {
+        setIsSearchingChats(false);
+        setChatSearchResults([]);
+        loadChatList();
+      } else {
+        setCrossChatResults([]);
+        setIsSearchingMessages(false);
       }
+      return;
+    }
+    const requestId = ++chatSearchRequestIdRef.current;
+    const mode = chatSearchMode;
+    if (mode === "chats") setIsSearchingChats(true);
+    else setIsSearchingMessages(true);
+    chatSearchDebounceRef.current = setTimeout(async () => {
+      // Still the latest keystroke by the time the debounce fires — go ahead and search.
+      if (mode === "chats") {
+        try {
+          const results: ChatMeta[] = await invoke("search_chats", { query });
+          if (requestId === chatSearchRequestIdRef.current) setChatSearchResults(results);
+        } catch (err) {
+          console.error("Chat search failed:", err);
+        } finally {
+          if (requestId === chatSearchRequestIdRef.current) setIsSearchingChats(false);
+        }
+      } else {
+        try {
+          const results: CrossChatSearchResult[] = await invoke("search_messages_across_chats", { query });
+          if (requestId === chatSearchRequestIdRef.current) setCrossChatResults(results);
+        } catch (err) {
+          console.error("Cross-chat message search failed:", err);
+        } finally {
+          if (requestId === chatSearchRequestIdRef.current) setIsSearchingMessages(false);
+        }
+      }
+    }, 250);
+  }
+  function handleChatSearchModeChange(mode: "chats" | "messages") {
+    if (mode === chatSearchMode) return;
+    setChatSearchMode(mode);
+    setIsSearchingChats(false);
+    setChatSearchResults([]);
+    setCrossChatResults([]);
+    setIsSearchingMessages(false);
+    if (chatSearchDebounceRef.current) clearTimeout(chatSearchDebounceRef.current);
+    const requestId = ++chatSearchRequestIdRef.current;
+    if (!chatSearchQuery.trim()) return;
+    if (mode === "chats") {
+      setIsSearchingChats(true);
+      invoke<ChatMeta[]>("search_chats", { query: chatSearchQuery })
+        .then(results => { if (requestId === chatSearchRequestIdRef.current) setChatSearchResults(results); })
+        .catch(err => console.error("Chat search failed:", err))
+        .finally(() => { if (requestId === chatSearchRequestIdRef.current) setIsSearchingChats(false); });
     } else {
-      setIsSearchingChats(false);
-      setChatSearchResults([]);
-      loadChatList();
+      setIsSearchingMessages(true);
+      invoke<CrossChatSearchResult[]>("search_messages_across_chats", { query: chatSearchQuery })
+        .then(results => { if (requestId === chatSearchRequestIdRef.current) setCrossChatResults(results); })
+        .catch(err => console.error("Cross-chat message search failed:", err))
+        .finally(() => { if (requestId === chatSearchRequestIdRef.current) setIsSearchingMessages(false); });
     }
   }
+  function handleCrossChatResultClick(result: CrossChatSearchResult) {
+    setPendingCrossChatJump({ chatId: result.chat_id, index: result.message_index });
+    setSelectedChat(result.chat_id);
+    setChatSearchQuery("");
+    setChatSearchMode("chats");
+    setCrossChatResults([]);
+  }
+  // Once a cross-chat jump target's chat has been switched to and its messages have started
+  // loading, apply the pending jump. Additive to the existing jumpedIndex effect above — this
+  // only gates *when* setJumpedIndex fires for a cross-chat jump.
+  useEffect(() => {
+    if (pendingCrossChatJump && selectedChat === pendingCrossChatJump.chatId && messages.length > 0) {
+      setJumpedIndex(pendingCrossChatJump.index);
+      setPendingCrossChatJump(null);
+    }
+  }, [pendingCrossChatJump, selectedChat, messages]);
   // Message search functions
   async function handleMessageSearch() {
     if (!selectedChat || !messageSearchQuery.trim()) return;
@@ -2091,6 +2205,24 @@ function App() {
   }
   async function handleAdvancedSearch() {
     if (!selectedChat) return;
+    // When only a From Date is set (no query, sender, type, or To Date), there's nothing to
+    // actually filter/list — treat it as a straight jump to that date instead of a search.
+    const dateFrom = searchFilters.date_from;
+    if (!searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && dateFrom && !searchFilters.date_to) {
+      setHasSearched(true);
+      try {
+        const idx: number | null = await invoke("find_message_index_for_date", { chatId: selectedChat, date: dateFrom });
+        setMessageSearchResults([]);
+        setHighlightedIndices(new Set());
+        if (idx !== null) {
+          scrollToResult(idx);
+          setJumpedIndex(idx);
+        }
+      } catch (err) {
+        console.error("Jump to date failed:", err);
+      }
+      return;
+    }
     try {
       const results: SearchResult[] = await invoke("search_messages_filtered", {
         chatId: selectedChat,
@@ -2473,6 +2605,16 @@ useEffect(() => {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   }
   return (
+    showLocked === null ? null : showLocked ? (
+      <StartScreen
+        onOpenChats={() => setShowStartScreen(false)}
+        onLock={() => setShowLocked(true)}
+        hasPinSet={hasPinSet}
+        locked
+        onUnlock={() => setShowLocked(false)}
+        onPinReset={() => setHasPinSet(false)}
+      />
+    ) : (
     <>
       {/* Toast Notification - always visible */}
       {toast.visible && (
@@ -2501,7 +2643,14 @@ useEffect(() => {
         />
       )}
       {showStartScreen ? (
-        <StartScreen onOpenChats={() => setShowStartScreen(false)} />
+        <StartScreen
+          onOpenChats={() => setShowStartScreen(false)}
+          onLock={() => setShowLocked(true)}
+          hasPinSet={hasPinSet}
+          locked={false}
+          onUnlock={() => setShowLocked(false)}
+          onPinReset={() => setHasPinSet(false)}
+        />
       ) : (
       <div className={`app${isMobile ? ' mobile' : ''}`}>
       {linkConfirmUrl && (
@@ -2516,6 +2665,15 @@ useEffect(() => {
           onSubmit={handleUsernameSubmit}
           onCancel={() => setShowUsernameDialog(false)}
           hasExistingName={!!username}
+        />
+      )}
+      {showPinSettingsDialog && (
+        <PinSettingsDialog
+          hasPin={hasPinSet}
+          onClose={() => setShowPinSettingsDialog(false)}
+          onChanged={() => {
+            invoke<boolean>("has_pin").then(setHasPinSet).catch(() => {});
+          }}
         />
       )}
       {showVCDialog && (
@@ -3001,6 +3159,13 @@ useEffect(() => {
           >
             {theme === "light" ? "🌙 Dark" : "☀️ Light"}
           </button>
+          <button
+            className="toolbar-btn"
+            onClick={() => setShowPinSettingsDialog(true)}
+            title="Manage the app lock PIN and security question"
+          >
+            🔒 {hasPinSet ? "Protection" : "Set Up Protection"}
+          </button>
           <button className="toolbar-btn" onClick={handleImport} disabled={importing}>
             {importing ? "…" : "+ Import"}
           </button>
@@ -3018,102 +3183,170 @@ useEffect(() => {
         </div>
         {/* Global Chat Search */}
         <div className="chat-search-container">
-          <input
-            type="text"
-            className="chat-search-input"
-            placeholder="Search chats..."
-            value={chatSearchQuery}
-            onChange={handleChatSearch}
-          />
-          {chatSearchQuery && (
-            <button
-              className="chat-search-clear"
-              onClick={() => {
-                setChatSearchQuery("");
-                setChatSearchResults([]);
-                setIsSearchingChats(false);
-                loadChatList();
-              }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        <div className="chat-type-filter">
           <button
-            className={`chat-filter-btn${chatTypeFilter === "all" ? " active" : ""}`}
-            onClick={() => setChatTypeFilter("all")}
-          >All</button>
-          <button
-            className={`chat-filter-btn${chatTypeFilter === "chats" ? " active" : ""}`}
-            onClick={() => setChatTypeFilter("chats")}
-          >Chats</button>
-          <button
-            className={`chat-filter-btn${chatTypeFilter === "groups" ? " active" : ""}`}
-            onClick={() => setChatTypeFilter("groups")}
-          >Groups</button>
-        </div>
-        <div className="chat-list">
-          {(() => {
-            const baseList = isSearchingChats ? chatSearchResults : chats;
-            const filteredList = chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
-            return filteredList;
-          })().length === 0 ? (
-            <div className="empty-state">
-              <p>No chats imported yet</p>
-              <p className="hint">Click "Import" to add a WhatsApp ZIP export</p>
-            </div>
-          ) : (
-            (() => {
-              const baseList = isSearchingChats ? chatSearchResults : chats;
-              return chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
-            })().map(chat => (
-              <div
-                key={chat.id}
-                className={`chat-item ${selectedChat === chat.id ? "active" : ""}`}
+            type="button"
+            className={`search-advanced-btn chat-search-mode-btn${chatSearchMode === "messages" ? " active" : ""}`}
+            title={chatSearchMode === "chats" ? "Search message content across all chats" : "Now searching all messages — click to search chat names instead"}
+            onClick={() => handleChatSearchModeChange(chatSearchMode === "chats" ? "messages" : "chats")}
+          >
+            {chatSearchMode === "messages" ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                <circle cx="8" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="12" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2Z"/>
+                <path d="M18 9h1a2 2 0 0 1 2 2v10l-4-4h-6a2 2 0 0 1-2-2v-1"/>
+              </svg>
+            )}
+          </button>
+          <div className="chat-search-input-wrap">
+            <input
+              type="text"
+              className="chat-search-input"
+              placeholder={chatSearchMode === "chats" ? "Search chats..." : "Search all messages..."}
+              value={chatSearchQuery}
+              onChange={handleChatSearch}
+            />
+            {chatSearchQuery && (
+              <button
+                className="chat-search-clear"
                 onClick={() => {
-                  setSelectedChat(chat.id);
-                  setSelectedMessageIndices(new Set());
-                  setMultiSelectMode(false);
-                  setLastSelectedIndex(null);
-                  setLastLongPressedIndex(null);
+                  if (chatSearchDebounceRef.current) clearTimeout(chatSearchDebounceRef.current);
+                  chatSearchRequestIdRef.current++;
+                  setChatSearchQuery("");
+                  setChatSearchResults([]);
+                  setIsSearchingChats(false);
+                  setCrossChatResults([]);
+                  setIsSearchingMessages(false);
+                  loadChatList();
                 }}
               >
-                {chat.photo_path ? (
-                  <ProfileImage photoPath={chat.photo_path} alt={chat.name} className="chat-avatar chat-avatar--photo" />
-                ) : chat.is_group ? (
-                  <GroupAvatar
-                    participants={chat.name.replace(/ \(Group\)$/, "").split(/[,&]+/).map(s => s.trim()).filter(Boolean)}
-                    size="normal"
-                  />
-                ) : (
-                  <div className="chat-avatar">
-                    {getInitials(stripChatPrefix(chat.name))}
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+        {chatSearchMode === "chats" ? (
+          <>
+            <div className="chat-type-filter">
+              <button
+                className={`chat-filter-btn${chatTypeFilter === "all" ? " active" : ""}`}
+                onClick={() => setChatTypeFilter("all")}
+              >All</button>
+              <button
+                className={`chat-filter-btn${chatTypeFilter === "chats" ? " active" : ""}`}
+                onClick={() => setChatTypeFilter("chats")}
+              >Chats</button>
+              <button
+                className={`chat-filter-btn${chatTypeFilter === "groups" ? " active" : ""}`}
+                onClick={() => setChatTypeFilter("groups")}
+              >Groups</button>
+            </div>
+            <div className="chat-list">
+              {(() => {
+                const baseList = chatSearchQuery.trim() ? chatSearchResults : chats;
+                const filteredList = chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
+                return filteredList;
+              })().length === 0 ? (
+                isSearchingChats ? (
+                  <div className="empty-state">
+                    <p>Searching…</p>
                   </div>
-                )}
-                <div className="chat-info">
-                  <div className="chat-row">
-                    <span className="chat-name">{stripChatPrefix(chat.name)}</span>
-                    {chat.is_group && <span className="group-badge">Group</span>}
-                    <div className="chat-timestamp-col">
-                      <span className="chat-date">{formatDate(chat.timestamp)}</span>
-                      <span className="chat-time">{formatTime(chat.timestamp)}</span>
+                ) : (
+                  <div className="empty-state">
+                    <p>No chats imported yet</p>
+                    <p className="hint">Click "Import" to add a WhatsApp ZIP export</p>
+                  </div>
+                )
+              ) : (
+                (() => {
+                  const baseList = chatSearchQuery.trim() ? chatSearchResults : chats;
+                  return chatTypeFilter === "all" ? baseList : chatTypeFilter === "groups" ? baseList.filter(c => c.is_group) : baseList.filter(c => !c.is_group);
+                })().map(chat => (
+                  <div
+                    key={chat.id}
+                    className={`chat-item ${selectedChat === chat.id ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedChat(chat.id);
+                      setSelectedMessageIndices(new Set());
+                      setMultiSelectMode(false);
+                      setLastSelectedIndex(null);
+                      setLastLongPressedIndex(null);
+                    }}
+                  >
+                    {chat.photo_path ? (
+                      <ProfileImage photoPath={chat.photo_path} alt={chat.name} className="chat-avatar chat-avatar--photo" />
+                    ) : chat.is_group ? (
+                      <GroupAvatar
+                        participants={chat.name.replace(/ \(Group\)$/, "").split(/[,&]+/).map(s => s.trim()).filter(Boolean)}
+                        size="normal"
+                      />
+                    ) : (
+                      <div className="chat-avatar">
+                        {getInitials(stripChatPrefix(chat.name))}
+                      </div>
+                    )}
+                    <div className="chat-info">
+                      <div className="chat-row">
+                        <span className="chat-name">{stripChatPrefix(chat.name)}</span>
+                        {chat.is_group && <span className="group-badge">Group</span>}
+                        <div className="chat-timestamp-col">
+                          <span className="chat-date">{formatDate(chat.timestamp)}</span>
+                          <span className="chat-time">{formatTime(chat.timestamp)}</span>
+                        </div>
+                      </div>
+                      <div className="chat-row">
+                        <span className="chat-preview">{chat.last_message.slice(0, 40)}</span>
+                        <button
+                          className="delete-btn"
+                          onClick={(e) => handleDelete(chat.id, e)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="chat-row">
-                    <span className="chat-preview">{chat.last_message.slice(0, 40)}</span>
-                    <button 
-                      className="delete-btn"
-                      onClick={(e) => handleDelete(chat.id, e)}
-                    >
-                      Delete
-                    </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="chat-list">
+            {isSearchingMessages ? (
+              <div className="empty-state">
+                <p>Searching…</p>
+              </div>
+            ) : !chatSearchQuery.trim() ? (
+              <div className="empty-state">
+                <p>Search message content across all chats</p>
+              </div>
+            ) : crossChatResults.length === 0 ? (
+              <div className="empty-state">
+                <p>No messages found</p>
+              </div>
+            ) : (
+              crossChatResults.map(r => (
+                <div
+                  key={`${r.chat_id}-${r.message_index}`}
+                  className="search-result-item"
+                  onClick={() => handleCrossChatResultClick(r)}
+                >
+                  <div className="search-result-header">
+                    <span className="search-result-sender">{r.chat_name} — {r.sender}</span>
+                    <span className="search-result-time">{formatDate(r.timestamp)} {formatTime(r.timestamp)}</span>
+                  </div>
+                  <div className="search-result-content">
+                    {highlightText(getSearchSnippet(r.content, chatSearchQuery), chatSearchQuery)}
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
       {/* Chat View */}
       <div className={`chat-view${isMobile && selectedChat ? ' active' : ''}`}>
@@ -3344,6 +3577,9 @@ useEffect(() => {
                           value={searchFilters.date_from || ""}
                           onChange={(e) => setSearchFilters({...searchFilters, date_from: e.target.value || null})}
                         />
+                        {!searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && searchFilters.date_from && !searchFilters.date_to && (
+                          <div className="character-counter">Jumps straight to this date — add a query, sender, type, or To Date to search/filter instead</div>
+                        )}
                       </div>
                       <div className="filter-group">
                         <label>To Date:</label>
@@ -3384,7 +3620,9 @@ useEffect(() => {
                     </div>
                     <div className="filter-actions">
                       <button className="filter-search-btn" onClick={handleAdvancedSearch}>
-                        Search with Filters
+                        {!searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && searchFilters.date_from && !searchFilters.date_to
+                          ? "Jump to Date"
+                          : "Search with Filters"}
                       </button>
                       <button 
                         className="filter-clear-btn" 
@@ -3435,8 +3673,12 @@ useEffect(() => {
                     )}
                   </div>
                 )}
-                {!showAdvancedSearch && messageSearchQuery && messageSearchResults.length === 0 && hasSearched && (
-                  <div className="search-no-results">No messages found</div>
+                {messageSearchResults.length === 0 && hasSearched && (!showAdvancedSearch ? messageSearchQuery : true) && (
+                  <div className="search-no-results">
+                    {showAdvancedSearch && !searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && searchFilters.date_from && !searchFilters.date_to
+                      ? "No messages on or after that date"
+                      : "No messages found"}
+                  </div>
                 )}
               </div>
             )}
@@ -3899,6 +4141,7 @@ useEffect(() => {
     </div>
     )}
     </>
+    )
   );
 }
 

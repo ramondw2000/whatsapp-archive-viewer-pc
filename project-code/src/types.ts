@@ -46,6 +46,16 @@ export interface SearchResult {
   msg_type: string;
 }
 
+export interface CrossChatSearchResult {
+  chat_id: string;
+  chat_name: string;
+  message_index: number;
+  timestamp: string;
+  sender: string;
+  content: string;
+  msg_type: string;
+}
+
 export interface Profile {
   chat_id: string;
   name: string | null;

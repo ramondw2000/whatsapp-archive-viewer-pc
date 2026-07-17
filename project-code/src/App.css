@@ -919,10 +919,40 @@ html, body, #root {
   border-bottom: 1px solid var(--wa-border);
 
 
+  box-sizing: border-box;
+
+
+  display: flex;
+
+
+  align-items: center;
+
+
+  gap: 8px;
+
+
+}
+
+
+.chat-search-mode-btn {
+
+
+  flex-shrink: 0;
+
+
+}
+
+
+.chat-search-input-wrap {
+
+
   position: relative;
 
 
-  box-sizing: border-box;
+  flex: 1;
+
+
+  min-width: 0;
 
 
 }
@@ -1043,17 +1073,51 @@ html, body, #root {
   color: var(--wa-text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .chat-filter-btn.active {
   background: var(--wa-teal);
   color: #fff;
-  border-color: var(--wa-teal);
+  border-color: #3df5ce;
+  box-shadow: 0 0 0 2px rgba(61, 245, 206, 0.45);
 }
 
 .chat-filter-btn:hover:not(.active) {
   background: var(--wa-hover);
+}
+
+.pin-protection-dialog {
+  min-width: 400px;
+  min-height: 328px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pin-protection-dialog form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.pin-protection-dialog .dialog-buttons {
+  margin-top: auto;
+}
+
+.pin-protection-tabs {
+  align-items: stretch;
+}
+
+.pin-protection-tabs .chat-filter-btn {
+  box-sizing: border-box;
+  height: 40px;
+  min-width: 0;
+  padding: 2px 8px;
+  line-height: 1.15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .header-buttons {
@@ -4569,9 +4633,14 @@ input, textarea {
   color: var(--wa-text);
 
 
-  border-color: var(--wa-border);
+  border-color: var(--wa-text-secondary);
 
 
+}
+
+
+[data-theme="dark"] .chat-filter-btn:not(.active) {
+  border-color: var(--wa-text-secondary);
 }
 
 
@@ -4812,6 +4881,16 @@ input, textarea {
 /* Username Dialog */
 
 
+.lock-screen-link {
+  color: var(--wa-teal);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.lock-screen-link:hover {
+  text-decoration: underline;
+}
+
 .dialog-overlay {
 
 
@@ -4962,7 +5041,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.dialog-close-btn):not(.group-participant-edit-btn):not(.contact-link-btn) {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.dialog-close-btn):not(.group-participant-edit-btn):not(.contact-link-btn):not(.chat-filter-btn) {
 
 
   width: 100%;
@@ -4998,7 +5077,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):hover {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):not(.chat-filter-btn):hover {
 
 
   background: #009688;
@@ -5007,7 +5086,7 @@ input, textarea {
 }
 
 
-.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):disabled {
+.dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):not(.chat-filter-btn):disabled {
 
 
   background: var(--wa-border);
@@ -5016,6 +5095,11 @@ input, textarea {
   cursor: not-allowed;
 
 
+}
+
+[data-theme="dark"] .dialog-content button:not(.reset-name-btn):not(.name-history-toggle):not(.name-history-restore):not(.group-participant-edit-btn):not(.contact-link-btn):not(.chat-filter-btn):disabled {
+  background: #3a4a54;
+  color: var(--wa-text-secondary);
 }
 
 
@@ -5037,6 +5121,18 @@ input, textarea {
   flex: 1;
 
 
+}
+
+.pin-protection-dialog .dialog-buttons button {
+  box-sizing: border-box !important;
+  height: 56px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  line-height: 1.15 !important;
 }
 
 
@@ -11329,6 +11425,9 @@ input, textarea {
   top: 0;
   right: 0;
   padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .check-updates-button {
@@ -11360,6 +11459,23 @@ input, textarea {
 
 .check-updates-button.update-available:hover {
   background: rgba(76, 175, 80, 1);
+}
+
+.start-screen-header {
+  z-index: 2;
+}
+
+.start-screen-content {
+  position: relative;
+  z-index: 2;
+}
+
+.start-screen--locked::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1;
 }
 
 

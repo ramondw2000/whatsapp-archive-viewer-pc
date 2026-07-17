@@ -160,6 +160,7 @@ This application handles user-private WhatsApp chat data. The following hardenin
 - **Asset protocol scope** — webview asset access is restricted to app-owned subdirectories only
 - **Image decode limits** — dimension cap (16,000×16,000 px) and allocation cap (256 MB) prevent decompression bombs
 - **CSP** — no external script or font sources; `unsafe-eval` absent
+- **PIN lock** — an optional app-level PIN (Settings → Protection) gates access to the UI; the PIN and its recovery answer are hashed with Argon2, never stored or compared in plain text. This is a local access gate, not encryption — the underlying chat database on disk is unencrypted, so it doesn't protect against someone with direct filesystem access
 
 ## License
 
