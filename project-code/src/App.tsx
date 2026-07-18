@@ -2602,7 +2602,15 @@ useEffect(() => {
   checkVCRedist();
 }, []);
   function getInitials(name: string): string {
-    return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+    // Array.from splits by Unicode code point rather than UTF-16 code unit, so surrogate-pair
+    // emoji (e.g. most emoji outside the Basic Multilingual Plane) aren't cut in half.
+    return name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(word => Array.from(word)[0] ?? "")
+      .join("")
+      .toUpperCase();
   }
   return (
     showLocked === null ? null : showLocked ? (
@@ -3027,16 +3035,16 @@ useEffect(() => {
             <h3>⚠️ Clear All Chats</h3>
             <p><strong>Delete all {chats.length} chat{chats.length !== 1 ? 's' : ''} permanently?</strong></p>
             <p>This cannot be undone. All messages and media will be removed.</p>
-            <div className="dialog-buttons">
+            <div className="dialog-buttons dialog-buttons--stacked">
               <button
                 className={`dialog-btn-primary ${!clearAllHasChanges ? 'disabled' : ''}`}
                 onClick={handleClearAllSaveAndDelete}
                 disabled={!clearAllHasChanges}
-                title={!clearAllHasChanges ? 'No unsaved changes found' : 'Save edit history for all chats, then delete'}
+                title={!clearAllHasChanges ? 'No unsaved changes found' : 'Back up your custom name/message edits, then delete everything'}
               >
-                Keep Changes & Delete All
+                Back Up Edits & Delete All
               </button>
-              <button className="dialog-btn-danger" onClick={handleClearAllChats}>Delete Everything</button>
+              <button className="dialog-btn-danger" onClick={handleClearAllChats} title="Delete everything, including any custom name/message edits">Delete All, Discard Edits</button>
               <button className="dialog-btn-secondary" onClick={() => setShowClearAllConfirm(false)}>Cancel</button>
             </div>
           </div>
@@ -3278,18 +3286,21 @@ useEffect(() => {
                       setLastLongPressedIndex(null);
                     }}
                   >
-                    {chat.photo_path ? (
-                      <ProfileImage photoPath={chat.photo_path} alt={chat.name} className="chat-avatar chat-avatar--photo" />
-                    ) : chat.is_group ? (
-                      <GroupAvatar
-                        participants={chat.name.replace(/ \(Group\)$/, "").split(/[,&]+/).map(s => s.trim()).filter(Boolean)}
-                        size="normal"
-                      />
-                    ) : (
-                      <div className="chat-avatar">
-                        {getInitials(stripChatPrefix(chat.name))}
-                      </div>
-                    )}
+                    <ProfileImage
+                      photoPath={chat.photo_path}
+                      alt={chat.name}
+                      className="chat-avatar chat-avatar--photo"
+                      fallback={chat.is_group ? (
+                        <GroupAvatar
+                          participants={chat.name.replace(/ \(Group\)$/, "").split(/[,&]+/).map(s => s.trim()).filter(Boolean)}
+                          size="normal"
+                        />
+                      ) : (
+                        <div className="chat-avatar">
+                          {getInitials(stripChatPrefix(chat.name))}
+                        </div>
+                      )}
+                    />
                     <div className="chat-info">
                       <div className="chat-row">
                         <span className="chat-name">{stripChatPrefix(chat.name)}</span>
@@ -3355,22 +3366,23 @@ useEffect(() => {
             <div className="chat-header">
               <div className="chat-header-left">
                 {selectedChatData?.is_group ? (
-                  profile?.photo_path ? (
-                    <ProfileImage photoPath={profile.photo_path} alt="Group" className="chat-avatar large chat-avatar--photo" />
-                  ) : (
-                    <GroupAvatar
-                      participants={allParticipantNames}
-                      size="large"
-                    />
-                  )
+                  <ProfileImage
+                    photoPath={profile?.photo_path}
+                    alt="Group"
+                    className="chat-avatar large chat-avatar--photo"
+                    fallback={<GroupAvatar participants={allParticipantNames} size="large" />}
+                  />
                 ) : (
-                  profile?.photo_path ? (
-                    <ProfileImage photoPath={profile.photo_path} alt="Profile" className="chat-avatar large chat-avatar--photo" />
-                  ) : (
-                    <div className="chat-avatar large">
-                      {getInitials(selectedChatData ? stripChatPrefix(selectedChatData.name) : "Chat")}
-                    </div>
-                  )
+                  <ProfileImage
+                    photoPath={profile?.photo_path}
+                    alt="Profile"
+                    className="chat-avatar large chat-avatar--photo"
+                    fallback={
+                      <div className="chat-avatar large">
+                        {getInitials(selectedChatData ? stripChatPrefix(selectedChatData.name) : "Chat")}
+                      </div>
+                    }
+                  />
                 )}
                 <div className="chat-header-info">
                   <h3>{selectedChatData ? stripChatPrefix(selectedChatData.name) : ""}</h3>

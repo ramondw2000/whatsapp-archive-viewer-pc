@@ -44,7 +44,15 @@ export function GroupParticipantsDialog({
   }, [photoPath]);
 
   function getInitials(name: string): string {
-    return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+    // Array.from splits by Unicode code point rather than UTF-16 code unit, so surrogate-pair
+    // emoji (e.g. most emoji outside the Basic Multilingual Plane) aren't cut in half.
+    return name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(word => Array.from(word)[0] ?? "")
+      .join("")
+      .toUpperCase();
   }
 
   return (

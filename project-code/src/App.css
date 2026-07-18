@@ -34,7 +34,7 @@
 
   height: 100%;
 
-  background: linear-gradient(135deg, var(--wa-teal) 0%, var(--wa-teal-dark) 100%);
+  background: linear-gradient(135deg, var(--wa-teal-dark) 0%, var(--wa-teal) 100%);
 
   display: flex;
 
@@ -156,7 +156,7 @@
 
   height: 100%;
 
-  background: linear-gradient(135deg, var(--wa-teal) 0%, var(--wa-teal-dark) 100%);
+  background: linear-gradient(135deg, var(--wa-teal-dark) 0%, var(--wa-teal) 100%);
 
   display: flex;
 
@@ -823,13 +823,13 @@ html, body, #root {
   padding: 14px 16px;
 
 
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid transparent !important;
 
 
   border-radius: 10px;
 
 
-  background: var(--bg-primary, #fff);
+  background: var(--wa-teal) !important;
 
 
   cursor: pointer;
@@ -847,10 +847,10 @@ html, body, #root {
 .export-modal-btn:hover {
 
 
-  background: var(--hover-bg, #f5f5f5);
+  background: var(--wa-teal-dark) !important;
 
 
-  border-color: var(--wa-teal, #00a884);
+  border-color: transparent !important;
 
 
 }
@@ -1084,7 +1084,7 @@ html, body, #root {
 }
 
 .chat-filter-btn:hover:not(.active) {
-  background: var(--wa-hover);
+  background: var(--wa-border);
 }
 
 .pin-protection-dialog {
@@ -3773,13 +3773,15 @@ input, textarea {
   margin-bottom: 8px;
 
 
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 
 
 }
 
 
 .search-box input {
+
+  min-width: 0;
 
 
   flex: 1;
@@ -4303,7 +4305,7 @@ input, textarea {
   font-size: 16px;
 
 
-  color: var(--wa-text-primary);
+  color: var(--wa-text);
 
 
   min-width: 36px;
@@ -5123,6 +5125,16 @@ input, textarea {
 
 }
 
+
+.dialog-buttons--stacked {
+  flex-direction: column;
+}
+
+.dialog-buttons--stacked button {
+  flex: none;
+  width: 100%;
+}
+
 .pin-protection-dialog .dialog-buttons button {
   box-sizing: border-box !important;
   height: 56px !important;
@@ -5160,10 +5172,10 @@ input, textarea {
 .dialog-btn-primary {
 
 
-  background: var(--wa-teal);
+  background: var(--wa-teal) !important;
 
 
-  color: white;
+  color: white !important;
 
 
 }
@@ -5172,7 +5184,7 @@ input, textarea {
 .dialog-btn-primary:hover:not(:disabled) {
 
 
-  background: var(--wa-teal-dark);
+  background: var(--wa-teal-dark) !important;
 
 
 }
@@ -5181,10 +5193,10 @@ input, textarea {
 .dialog-btn-primary.disabled {
 
 
-  background: #ccc;
+  background: #ccc !important;
 
 
-  color: #999;
+  color: #999 !important;
 
 
   cursor: not-allowed;
@@ -5199,10 +5211,10 @@ input, textarea {
 .dialog-btn-danger {
 
 
-  background: #dc3545;
+  background: #dc3545 !important;
 
 
-  color: white;
+  color: white !important;
 
 
 }
@@ -5211,7 +5223,7 @@ input, textarea {
 .dialog-btn-danger:hover:not(:disabled) {
 
 
-  background: #c82333;
+  background: #c82333 !important;
 
 
 }
@@ -5220,10 +5232,10 @@ input, textarea {
 .dialog-btn-secondary {
 
 
-  background: #6c757d;
+  background: #6c757d !important;
 
 
-  color: white;
+  color: white !important;
 
 
 }
@@ -5232,7 +5244,7 @@ input, textarea {
 .dialog-btn-secondary:hover:not(:disabled) {
 
 
-  background: #5a6268;
+  background: #5a6268 !important;
 
 
 }
@@ -5339,7 +5351,7 @@ input, textarea {
 
   font-size: 12px;
 
-  color: var(--text-secondary, #888);
+  color: var(--wa-text-secondary, #888);
 
   margin-top: 4px;
 
@@ -5421,7 +5433,7 @@ input, textarea {
   font-size: 13px;
 
 
-  color: var(--text-secondary, #888);
+  color: var(--wa-text-secondary, #888);
 
 
   font-variant-numeric: tabular-nums;
@@ -9703,6 +9715,11 @@ input, textarea {
 }
 
 
+[data-theme="dark"] .dialog-close-btn {
+  color: var(--wa-text-secondary) !important;
+}
+
+
 /* Jump Buttons */
 
 
@@ -10231,7 +10248,7 @@ input, textarea {
   justify-content: center;
 
 
-  background: var(--wa-message-bg, #f0f0f0);
+  background: var(--wa-sidebar, #f0f0f0);
 
 
   border-radius: 8px;
@@ -10273,7 +10290,7 @@ input, textarea {
 .bg-empty-hint code {
 
 
-  background: var(--wa-message-bg, #f0f0f0);
+  background: var(--wa-sidebar, #f0f0f0);
 
 
   padding: 1px 5px;
@@ -10294,7 +10311,8 @@ input, textarea {
 .bg-modal {
 
 
-  background: var(--wa-panel-bg, #fff);
+  background: var(--wa-receiver-bg, #fff);
+  color: var(--wa-text);
 
 
   border-radius: 12px;
@@ -10552,7 +10570,7 @@ input, textarea {
   border-radius: 8px;
 
 
-  background: var(--wa-message-bg, #f0f0f0);
+  background: var(--wa-receiver-bg, #f0f0f0);
 
 
 }
@@ -10952,7 +10970,7 @@ input, textarea {
 
   border-radius: 50%;
 
-  color: var(--wa-dark, #333);
+  color: var(--wa-text-secondary);
 
   transition: all 0.2s;
 
@@ -11058,7 +11076,7 @@ input, textarea {
 
   padding: 40px 20px;
 
-  color: var(--wa-dark, #666);
+  color: var(--wa-text-secondary);
 
   font-size: 14px;
 
@@ -11140,8 +11158,18 @@ input, textarea {
 
   font-size: 12px;
 
-  color: var(--wa-dark, #666);
+  color: var(--wa-text-secondary);
 
+}
+
+[data-theme="dark"] .favorite-item,
+[data-theme="dark"] .favorite-item.received {
+  background: var(--wa-receiver-bg);
+  color: var(--wa-text);
+}
+
+[data-theme="dark"] .favorite-item.system {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 
