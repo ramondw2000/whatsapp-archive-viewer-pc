@@ -10,8 +10,10 @@ import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
 import { createRenderMessageText, highlightText, getSearchSnippet } from "./utils/textRendering";
 import { stripChatPrefix } from "./utils/stripChatPrefix";
+import { getSearchOverlayWidth } from "./utils/searchOverlayWidth";
 import { isNewerVersion } from "./utils/version";
 import { LoadingOverlay } from "./components/LoadingOverlay";
+import { LoadingDots } from "./components/LoadingDots";
 import { JumpButton } from "./components/JumpButton";
 import { LinkConfirmModal } from "./components/LinkConfirmModal";
 import { ExpandableText } from "./components/ExpandableText";
@@ -1588,43 +1590,21 @@ function App() {
       // Set last 100 messages (most recent) immediately for fast render - force new array
       setMessages([...initialData.messages]);
       console.log("[LOAD_MESSAGES] Messages state updated");
-      // Stream earlier messages in chunks to avoid UI stutter
+      // Fetch everything earlier in a single query and merge it in a single state update.
+      // Streaming this in via many small OFFSET-paginated chunks (the old approach) is
+      // quadratic in message count on both ends: SQL's OFFSET re-scans and discards every
+      // skipped row on each call, and splicing each chunk into React state via
+      // [...before, ...chunk, ...after] recopies the entire (growing) array every time.
+      // Together those made chats with hundreds of thousands of messages take minutes.
       if (totalCount > 100) {
         const remainingCount = totalCount - 100;
-        const chunkSize = 100;
-        const chunks = Math.ceil(remainingCount / chunkSize);
-        // Load chunks progressively using requestIdleCallback or setTimeout
-        for (let i = 0; i < chunks; i++) {
-          if (token.cancelled) break;
-          await new Promise<void>(resolve => {
-            const loadChunk = () => {
-              if (token.cancelled) { resolve(); return; }
-              const offset = i * chunkSize;
-              const limit = Math.min(chunkSize, remainingCount - offset);
-              invoke<ChatData>("get_chat_messages", { 
-                chatId, 
-                limit, 
-                offset 
-              }).then(chunkData => {
-                if (!token.cancelled && chunkData.messages.length > 0) {
-                  // Insert chunk in correct position (before existing messages)
-                  setMessages(prev => {
-                    const before = prev.slice(0, offset);
-                    const after = prev.slice(offset);
-                    return [...before, ...chunkData.messages, ...after];
-                  });
-                }
-                resolve();
-              });
-            };
-            // Use requestIdleCallback if available, else setTimeout
-            if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-              window.requestIdleCallback(loadChunk, { timeout: 100 });
-            } else {
-              setTimeout(loadChunk, 0);
-            }
-          });
-        }
+        const earlierData: ChatData = await invoke("get_chat_messages", {
+          chatId,
+          limit: remainingCount,
+          offset: 0
+        });
+        if (token.cancelled) return;
+        setMessages(prev => [...earlierData.messages, ...prev]);
       }
     } catch (err) {
       console.error("Failed to load messages:", err);
@@ -3512,7 +3492,7 @@ useEffect(() => {
               </button>
             </div>
             {showMessageSearch && (
-              <div className="search-overlay" ref={searchOverlayRef}>
+              <div className="search-overlay" ref={searchOverlayRef} style={{ width: getSearchOverlayWidth(messageSearchResults.length) }}>
                 <div className="search-box">
                   <input
                     type="text"
@@ -3546,7 +3526,7 @@ useEffect(() => {
                   {messageSearchResults.length > 0 && (
                     <div className="search-nav">
                       <span className="search-nav-count">
-                        {searchResultCursor + 1}/{messageSearchResults.length}
+                        {(searchResultCursor + 1).toLocaleString()}/{messageSearchResults.length.toLocaleString()}
                       </span>
                       <button
                         className="search-nav-btn"
@@ -3713,7 +3693,7 @@ useEffect(() => {
             <>
             <div className={`messages-container${chatBackground ? " messages-container--has-bg" : ""}`} style={showMediaGallery || showFavorites ? { display: "none" } : chatBackground ? { backgroundImage: `url('${chatBackground.startsWith("data:") || chatBackground.startsWith("/app_backgrounds/") ? chatBackground : convertFileSrc(chatBackground)}')`, backgroundSize: "cover", backgroundPosition: "center" } : {}} ref={messagesContainerRef}>
               {loading ? (
-                <div className="loading">Loading messages...</div>
+                <div className="loading"><LoadingDots text="Loading messages" /></div>
               ) : messages.length === 0 ? (
                 <div className="empty-messages">
                   <div className="empty-messages-content">
