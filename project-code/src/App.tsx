@@ -2033,6 +2033,7 @@ function App() {
       // Show delete success dialog
       setDeleteSuccessDialog({ chatName: deleteDialog.chatName });
     } catch (err) {
+      console.error("Failed to delete chat:", err);
       showToast("Failed to delete chat");
     }
   }

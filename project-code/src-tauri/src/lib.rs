@@ -1341,23 +1341,13 @@ fn merge_messages_into_chat(conn: &mut Connection, chat_id: &str, new_messages: 
         }).map_err(|e| e.to_string())?;
         for row in rows {
             let (db_id, ts, sender, content) = row.map_err(|e| e.to_string())?;
-            let clean_content: String = content.chars().filter(|c| !matches!(*c,
-                '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
-                '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
-            )).collect();
-            let prefix: String = clean_content.chars().take(40).collect();
-            existing.insert((ts, sender, prefix), db_id);
+            existing.insert((ts, sender, fingerprint_prefix(&content)), db_id);
         }
     }
     let mut inserted = 0usize;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for msg in new_messages {
-        let clean_content: String = msg.content.chars().filter(|c| !matches!(*c,
-            '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
-            '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
-        )).collect();
-        let content_prefix: String = clean_content.chars().take(40).collect();
-        let key = (msg.timestamp.clone(), msg.sender.clone(), content_prefix);
+        let key = (msg.timestamp.clone(), msg.sender.clone(), fingerprint_prefix(&msg.content));
         if let Some(&db_id) = existing.get(&key) {
             // Message already exists — preserve manual changes, but upgrade msg_type
             // if the new parse produced a better type (e.g. "file" -> "image")
@@ -2921,8 +2911,13 @@ fn delete_chat(chat_id: String) -> Result<(), String> {
     let app_data = get_app_data_dir();
     let chat_dir = app_data.join("chats").join(&chat_id);
     let import_dir = app_data.join("imports").join(&chat_id);
-    // Delete from SQLite (cascade will delete messages)
+    // Delete from SQLite (cascade will delete messages).
+    // contact_groups.chat_id has no ON DELETE CASCADE (SQLite can't add one without recreating
+    // the table), so rows resolved there for this chat must be removed explicitly first or the
+    // DELETE FROM chats below fails with "FOREIGN KEY constraint failed".
     let conn = get_db();
+    conn.execute("DELETE FROM contact_groups WHERE chat_id = ?1", params![&chat_id])
+        .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM chats WHERE id = ?1", params![&chat_id])
         .map_err(|e| e.to_string())?;
     if chat_dir.exists() {
@@ -2945,7 +2940,9 @@ fn clear_all_chats() -> Result<u32, String> {
         .filter_map(|r| r.ok())
         .collect();
     let count = ids.len() as u32;
-    // Delete all rows (messages cascade via FK)
+    // Delete all rows (messages cascade via FK). contact_groups.chat_id lacks ON DELETE
+    // CASCADE, so it must be cleared explicitly first (see delete_chat for details).
+    conn.execute("DELETE FROM contact_groups", []).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM chats", []).map_err(|e| e.to_string())?;
     // Remove all chat directories
     for id in &ids {
@@ -5449,6 +5446,70 @@ fn unlink_contact_from_chat(contact_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// MESSAGE FINGERPRINTING (for modification replay across reimports)
+// ============================================================================
+// A saved modification (renamed attachment, retagged type, favorite, ...) targets a specific
+// message. Historically that target was recorded purely as message_index — its position in
+// the chat's message list — but that position shifts whenever a reimport produces a different
+// ordering than the one the modification was captured against (e.g. two distinct chats getting
+// merged under the same name, per the delete_chat FK bug). Applying by index alone can then
+// silently land on the wrong message. To guard against that, modifications also carry a content
+// fingerprint (timestamp, sender, first 40 chars of content with WhatsApp's invisible
+// directional-mark characters stripped — the same identity WhatsApp export dedup already uses)
+// and resolution prefers matching by that, falling back to the raw index only for older saved
+// modifications that predate fingerprinting or when no fingerprint match is found.
+
+fn strip_invisible_marks(content: &str) -> String {
+    content.chars().filter(|c| !matches!(*c,
+        '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
+        '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
+    )).collect()
+}
+
+fn fingerprint_prefix(content: &str) -> String {
+    strip_invisible_marks(content).chars().take(40).collect()
+}
+
+/// Maps (timestamp, sender, content fingerprint) -> message id, for every message in a chat.
+fn build_fingerprint_lookup(conn: &Connection, chat_id: &str) -> std::collections::HashMap<(String, String, String), i64> {
+    let mut map = std::collections::HashMap::new();
+    let mut stmt = match conn.prepare(
+        "SELECT id, timestamp, sender, content FROM messages WHERE chat_id = ?1 ORDER BY id ASC"
+    ) { Ok(s) => s, Err(_) => return map };
+    let rows = match stmt.query_map([chat_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+    }) { Ok(r) => r, Err(_) => return map };
+    for (id, ts, sender, content) in rows.flatten() {
+        map.insert((ts, sender, fingerprint_prefix(&content)), id);
+    }
+    map
+}
+
+/// Resolve a saved modification entry to the message id it should apply to: fingerprint first
+/// (stable across reimports that reorder messages), then the raw positional index as a fallback.
+fn resolve_modification_target(
+    conn: &Connection,
+    chat_id: &str,
+    fingerprints: &std::collections::HashMap<(String, String, String), i64>,
+    entry: &serde_json::Value,
+    index_key: &str,
+) -> Option<i64> {
+    if let (Some(ts), Some(sender), Some(prefix)) = (
+        entry.get("timestamp").and_then(|v| v.as_str()),
+        entry.get("sender").and_then(|v| v.as_str()),
+        entry.get("content_prefix").and_then(|v| v.as_str()),
+    ) {
+        if let Some(&id) = fingerprints.get(&(ts.to_string(), sender.to_string(), prefix.to_string())) {
+            return Some(id);
+        }
+    }
+    let idx = entry.get(index_key).and_then(|v| v.as_i64())?;
+    if idx < 0 { return None; }
+    conn.prepare("SELECT id FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT 1 OFFSET ?2").ok()
+        .and_then(|mut stmt| stmt.query_row(params![chat_id, idx], |row| row.get(0)).ok())
+}
+
 #[tauri::command]
 fn export_chat_modifications(chat_id: String) -> Result<String, String> {
     let conn = get_db();
@@ -5457,12 +5518,15 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
     // 1. Export message modifications (display_name, tag_ext, msg_type changes)
     // Use ROW_NUMBER() to compute message index since we don't have a message_index column
     let mut stmt = conn.prepare(
-        "SELECT 
+        "SELECT
             m1.id,
             (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx,
-            m1.display_name, 
-            m1.tag_ext, 
-            m1.msg_type 
+            m1.display_name,
+            m1.tag_ext,
+            m1.msg_type,
+            m1.timestamp,
+            m1.sender,
+            m1.content
          FROM messages m1
          WHERE m1.chat_id = ?1 AND (m1.display_name_modified = 1 OR m1.tag_ext_modified = 1 OR m1.msg_type_modified = 1)"
     ).map_err(|e| e.to_string())?;
@@ -5473,16 +5537,22 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
             row.get::<_, Option<String>>(2)?,  // display_name
             row.get::<_, Option<String>>(3)?,  // tag_ext
             row.get::<_, String>(4)?,  // msg_type
+            row.get::<_, String>(5)?,  // timestamp
+            row.get::<_, String>(6)?,  // sender
+            row.get::<_, String>(7)?,  // content
         ))
     }).map_err(|e| e.to_string())?;
     for row in rows {
-        let (_id, msg_idx, display_name, tag_ext, msg_type) = row.map_err(|e| e.to_string())?;
+        let (_id, msg_idx, display_name, tag_ext, msg_type, timestamp, sender, content) = row.map_err(|e| e.to_string())?;
         all_modifications.push(serde_json::json!({
             "type": "message",
             "message_index": msg_idx,
             "display_name": display_name,
             "tag_ext": tag_ext,
-            "msg_type": msg_type
+            "msg_type": msg_type,
+            "timestamp": timestamp,
+            "sender": sender,
+            "content_prefix": fingerprint_prefix(&content)
         }));
     }
     // 2. Check for profile modifications (only if profile_modified flag is set)
@@ -5508,20 +5578,32 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
     }
     // 3. Export favorite messages
     let mut fav_stmt = conn.prepare(
-        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx
+        "SELECT
+            (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx,
+            m1.timestamp,
+            m1.sender,
+            m1.content
          FROM messages m1
          WHERE m1.chat_id = ?1 AND m1.is_favorite = 1
          ORDER BY m1.id ASC"
     ).map_err(|e| e.to_string())?;
-    let fav_indices: Vec<i64> = fav_stmt
-        .query_map([&chat_id], |row| row.get(0))
+    let fav_entries: Vec<serde_json::Value> = fav_stmt
+        .query_map([&chat_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
+        .map(|(idx, ts, sender, content)| serde_json::json!({
+            "message_index": idx,
+            "timestamp": ts,
+            "sender": sender,
+            "content_prefix": fingerprint_prefix(&content)
+        }))
         .collect();
-    if !fav_indices.is_empty() {
+    if !fav_entries.is_empty() {
         all_modifications.push(serde_json::json!({
             "type": "favorites",
-            "indices": fav_indices
+            "indices": fav_entries
         }));
     }
     serde_json::to_string(&all_modifications).map_err(|e| e.to_string())
@@ -5530,33 +5612,34 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
 #[tauri::command]
 fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Result<(), String> {
     let conn = get_db();
-    let modifications: Vec<serde_json::Value> = 
+    let modifications: Vec<serde_json::Value> =
         serde_json::from_str(&modifications_json).map_err(|e| e.to_string())?;
+    let fingerprints = build_fingerprint_lookup(&conn, &chat_id);
     for mod_entry in modifications {
         let mod_type = mod_entry.get("type").and_then(|v| v.as_str()).unwrap_or("message");
         if mod_type == "message" {
-            let message_index = mod_entry.get("message_index").and_then(|v| v.as_i64()).unwrap_or(0);
+            let target_id = resolve_modification_target(&conn, &chat_id, &fingerprints, &mod_entry, "message_index");
             let display_name = mod_entry.get("display_name").and_then(|v| v.as_str()).map(|s| s.to_string());
             let tag_ext = mod_entry.get("tag_ext").and_then(|v| v.as_str()).map(|s| s.to_string());
             let msg_type = mod_entry.get("msg_type").and_then(|v| v.as_str()).unwrap_or("text");
+            let Some(id) = target_id else { continue };
             // Apply updates one by one using parameterized queries to avoid SQL injection
             if let Some(name) = display_name {
                 conn.execute(
-                    "UPDATE messages SET display_name = ?4, display_name_modified = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
-                    [&chat_id, &chat_id, &message_index.to_string(), &name]
+                    "UPDATE messages SET display_name = ?1, display_name_modified = 1 WHERE id = ?2",
+                    params![&name, id]
                 ).map_err(|e| e.to_string())?;
             }
             if let Some(tag) = tag_ext {
                 conn.execute(
-                    "UPDATE messages SET tag_ext = ?4, tag_ext_modified = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
-                    [&chat_id, &chat_id, &message_index.to_string(), &tag]
+                    "UPDATE messages SET tag_ext = ?1, tag_ext_modified = 1 WHERE id = ?2",
+                    params![&tag, id]
                 ).map_err(|e| e.to_string())?;
             }
             if msg_type != "text" {
-                let msg_type_owned = msg_type.to_string();
                 conn.execute(
-                    "UPDATE messages SET msg_type = ?4, msg_type_modified = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
-                    [&chat_id, &chat_id, &message_index.to_string(), &msg_type_owned]
+                    "UPDATE messages SET msg_type = ?1, msg_type_modified = 1 WHERE id = ?2",
+                    params![msg_type, id]
                 ).map_err(|e| e.to_string())?;
             }
         } else if mod_type == "profile" {
@@ -5579,13 +5662,15 @@ fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Resu
                 rusqlite::params![&chat_id, &name, &notes, &photo_path, &phone_number, &background_path],
             ).map_err(|e| e.to_string())?;
         } else if mod_type == "favorites" {
-            // Restore favorite messages by index
+            // Restore favorite messages. Older saved data stores plain indices; newer data
+            // stores objects carrying a fingerprint alongside the index — both are accepted.
             if let Some(indices) = mod_entry.get("indices").and_then(|v| v.as_array()) {
-                for idx_val in indices {
-                    if let Some(idx) = idx_val.as_i64() {
+                for entry in indices {
+                    let normalized = if entry.is_object() { entry.clone() } else { serde_json::json!({ "message_index": entry }) };
+                    if let Some(id) = resolve_modification_target(&conn, &chat_id, &fingerprints, &normalized, "message_index") {
                         conn.execute(
-                            "UPDATE messages SET is_favorite = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
-                            rusqlite::params![&chat_id, &chat_id, idx],
+                            "UPDATE messages SET is_favorite = 1 WHERE id = ?1",
+                            params![id],
                         ).map_err(|e| e.to_string())?;
                     }
                 }
@@ -5858,12 +5943,15 @@ fn build_chat_export_data(conn: &Connection, chat_id: &str) -> Result<(String, V
 fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Result<String, String> {
     let mut all_modifications: Vec<serde_json::Value> = Vec::new();
     let mut stmt = conn.prepare(
-        "SELECT 
+        "SELECT
             m1.id,
             (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx,
-            m1.display_name, 
-            m1.tag_ext, 
-            m1.msg_type 
+            m1.display_name,
+            m1.tag_ext,
+            m1.msg_type,
+            m1.timestamp,
+            m1.sender,
+            m1.content
          FROM messages m1
          WHERE m1.chat_id = ?1 AND (m1.display_name_modified = 1 OR m1.tag_ext_modified = 1 OR m1.msg_type_modified = 1)"
     ).map_err(|e| e.to_string())?;
@@ -5874,16 +5962,22 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
             row.get::<_, Option<String>>(2)?,
             row.get::<_, Option<String>>(3)?,
             row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
         ))
     }).map_err(|e| e.to_string())?;
     for row in rows {
-        let (_id, msg_idx, display_name, tag_ext, msg_type) = row.map_err(|e| e.to_string())?;
+        let (_id, msg_idx, display_name, tag_ext, msg_type, timestamp, sender, content) = row.map_err(|e| e.to_string())?;
         all_modifications.push(serde_json::json!({
             "type": "message",
             "message_index": msg_idx,
             "display_name": display_name,
             "tag_ext": tag_ext,
-            "msg_type": msg_type
+            "msg_type": msg_type,
+            "timestamp": timestamp,
+            "sender": sender,
+            "content_prefix": fingerprint_prefix(&content)
         }));
     }
     let profile_modified: bool = conn.query_row(
@@ -5907,37 +6001,68 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
     }
     // Export favorites
     let mut fav_stmt = conn.prepare(
-        "SELECT (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx
+        "SELECT
+            (SELECT COUNT(*) FROM messages m2 WHERE m2.chat_id = m1.chat_id AND m2.id <= m1.id) - 1 as msg_idx,
+            m1.timestamp,
+            m1.sender,
+            m1.content
          FROM messages m1
          WHERE m1.chat_id = ?1 AND m1.is_favorite = 1
          ORDER BY m1.id ASC"
     ).map_err(|e| e.to_string())?;
-    let fav_indices: Vec<i64> = fav_stmt
-        .query_map([chat_id], |row| row.get(0))
+    let fav_entries: Vec<serde_json::Value> = fav_stmt
+        .query_map([chat_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
+        .map(|(idx, ts, sender, content)| serde_json::json!({
+            "message_index": idx,
+            "timestamp": ts,
+            "sender": sender,
+            "content_prefix": fingerprint_prefix(&content)
+        }))
         .collect();
-    if !fav_indices.is_empty() {
+    if !fav_entries.is_empty() {
         all_modifications.push(serde_json::json!({
             "type": "favorites",
-            "indices": fav_indices
+            "indices": fav_entries
         }));
     }
-    // Export file renames
+    // Export file renames. LEFT JOIN back to the message currently at that index so the rename
+    // carries a fingerprint too — a rename's message_index is otherwise just as fragile as any
+    // other index-based reference (see the fingerprinting note above resolve_modification_target).
     let mut rename_stmt = conn.prepare(
-        "SELECT message_index, original_filename, new_filename FROM chat_file_renames WHERE chat_id = ?1 ORDER BY changed_at ASC"
+        "SELECT r.message_index, r.original_filename, r.new_filename, m.timestamp, m.sender, m.content
+         FROM chat_file_renames r
+         LEFT JOIN messages m ON m.id = (
+             SELECT id FROM messages m2 WHERE m2.chat_id = r.chat_id ORDER BY m2.id ASC LIMIT 1 OFFSET r.message_index
+         )
+         WHERE r.chat_id = ?1 ORDER BY r.changed_at ASC"
     ).map_err(|e| e.to_string())?;
-    let renames: Vec<(i64, String, String)> = rename_stmt.query_map([chat_id], |row| {
-        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    let renames: Vec<serde_json::Value> = rename_stmt.query_map([chat_id], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+        ))
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok())
+        .map(|(idx, orig, new, ts, sender, content)| serde_json::json!({
+            "message_index": idx,
+            "original_filename": orig,
+            "new_filename": new,
+            "timestamp": ts,
+            "sender": sender,
+            "content_prefix": content.map(|c| fingerprint_prefix(&c))
+        }))
+        .collect();
     if !renames.is_empty() {
         all_modifications.push(serde_json::json!({
             "type": "file_renames",
-            "renames": renames.iter().map(|(idx, orig, new)| serde_json::json!({
-                "message_index": idx,
-                "original_filename": orig,
-                "new_filename": new
-            })).collect::<Vec<_>>()
+            "renames": renames
         }));
     }
     // Export name history
@@ -6441,18 +6566,12 @@ fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
 
 fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modifications_json: &str) -> Result<(), String> {
     let modifications: Vec<serde_json::Value> = serde_json::from_str(modifications_json).map_err(|e| e.to_string())?;
+    let fingerprints = build_fingerprint_lookup(conn, chat_id);
     for modification in &modifications {
         let mod_type = modification["type"].as_str().unwrap_or("");
         match mod_type {
             "message" => {
-                let msg_idx = modification["message_index"].as_i64().unwrap_or(-1);
-                if msg_idx < 0 { continue; }
-                // Get message ID by index
-                let msg_id: Option<i64> = conn.prepare(
-                    "SELECT id FROM messages WHERE chat_id = ?1 ORDER BY id ASC LIMIT 1 OFFSET ?2"
-                ).ok().and_then(|mut stmt| {
-                    stmt.query_row(params![chat_id, msg_idx], |row| row.get(0)).ok()
-                });
+                let msg_id = resolve_modification_target(conn, chat_id, &fingerprints, modification, "message_index");
                 if let Some(id) = msg_id {
                     if let Some(dn) = modification["display_name"].as_str() {
                         let _ = conn.execute(
@@ -6499,13 +6618,15 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                 }
             }
             "favorites" => {
-                // Restore favorite messages by index
+                // Restore favorite messages. Older saved data stores plain indices; newer data
+                // stores objects carrying a fingerprint alongside the index — both accepted.
                 if let Some(indices) = modification["indices"].as_array() {
-                    for idx_val in indices {
-                        if let Some(idx) = idx_val.as_i64() {
+                    for entry in indices {
+                        let normalized = if entry.is_object() { entry.clone() } else { serde_json::json!({ "message_index": entry }) };
+                        if let Some(id) = resolve_modification_target(conn, chat_id, &fingerprints, &normalized, "message_index") {
                             let _ = conn.execute(
-                                "UPDATE messages SET is_favorite = 1 WHERE chat_id = ?1 AND id = (SELECT id FROM messages WHERE chat_id = ?2 ORDER BY id LIMIT 1 OFFSET ?3)",
-                                params![chat_id, chat_id, idx]
+                                "UPDATE messages SET is_favorite = 1 WHERE id = ?1",
+                                params![id]
                             );
                         }
                     }
@@ -6517,8 +6638,7 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                     let app_data = get_app_data_dir();
                     let media_dir = app_data.join("chats").join(chat_id).join("media");
                     for rename in renames {
-                        if let (Some(idx), Some(orig), Some(new)) = (
-                            rename["message_index"].as_i64(),
+                        if let (Some(orig), Some(new)) = (
                             rename["original_filename"].as_str(),
                             rename["new_filename"].as_str()
                         ) {
@@ -6526,11 +6646,15 @@ fn apply_chat_modifications_internal(conn: &mut Connection, chat_id: &str, modif
                             let new_path = media_dir.join(new);
                             if old_path.exists() && !new_path.exists() {
                                 let _ = fs::rename(&old_path, &new_path);
-                                // Update database media column
-                                let _ = conn.execute(
-                                    "UPDATE messages SET media = ?1 WHERE chat_id = ?2 AND id = (SELECT id FROM messages WHERE chat_id = ?3 ORDER BY id LIMIT 1 OFFSET ?4)",
-                                    params![new, chat_id, chat_id, idx]
-                                );
+                                // Update database media column on whichever message this rename
+                                // actually targets (fingerprint-resolved where possible)
+                                if let Some(id) = resolve_modification_target(conn, chat_id, &fingerprints, rename, "message_index") {
+                                    let _ = conn.execute(
+                                        "UPDATE messages SET media = ?1 WHERE id = ?2",
+                                        params![new, id]
+                                    );
+                                }
+                                let idx = rename["message_index"].as_i64().unwrap_or(-1);
                                 // Record in history
                                 let _ = conn.execute(
                                     "INSERT INTO chat_file_renames (chat_id, message_index, original_filename, new_filename) VALUES (?1, ?2, ?3, ?4)",
