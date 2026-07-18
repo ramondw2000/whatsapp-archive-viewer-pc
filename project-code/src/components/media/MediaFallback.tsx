@@ -44,7 +44,7 @@ export function MediaFallback({ filename, className, chatId, existsInZip, onRest
             onClick={restoreFromZip}
             disabled={restoring}
           >
-            {restoring ? "Restoring..." : "Restore from ZIP"}
+            {restoring ? "Restoring…" : "Restore from ZIP"}
           </button>
         )}
       </div>

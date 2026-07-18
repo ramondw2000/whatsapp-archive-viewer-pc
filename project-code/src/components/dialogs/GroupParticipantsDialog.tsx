@@ -15,6 +15,9 @@ interface GroupParticipantsDialogProps {
   onEditParticipant?: (name: string) => void;
   formerMembers?: Set<string>;
   displayNameOverrides?: Record<string, string>;
+  participantPhotos?: Record<string, string>;
+  photoHistoryCount?: number;
+  onOpenPhotoHistory?: () => void;
 }
 
 export function GroupParticipantsDialog({
@@ -30,6 +33,9 @@ export function GroupParticipantsDialog({
   onEditParticipant,
   formerMembers,
   displayNameOverrides = {},
+  participantPhotos = {},
+  photoHistoryCount,
+  onOpenPhotoHistory,
 }: GroupParticipantsDialogProps) {
   const [photoSrc, setPhotoSrc] = useState<string | null>(null);
 
@@ -42,6 +48,22 @@ export function GroupParticipantsDialog({
       .then(setPhotoSrc)
       .catch(() => setPhotoSrc(null));
   }, [photoPath]);
+
+  // Participant avatars are loaded as base64 too, same as the group's own photo above —
+  // convertFileSrc doesn't reliably resolve paths under profile_photos in this app.
+  const [participantPhotoSrcs, setParticipantPhotoSrcs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    Object.entries(participantPhotos).forEach(([name, path]) => {
+      if (participantPhotoSrcs[name]) return;
+      invoke<string>("read_file_as_base64", { path })
+        .then(src => { if (!cancelled) setParticipantPhotoSrcs(prev => ({ ...prev, [name]: src })); })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participantPhotos]);
 
   function getInitials(name: string): string {
     // Array.from splits by Unicode code point rather than UTF-16 code unit, so surrogate-pair
@@ -84,14 +106,28 @@ export function GroupParticipantsDialog({
               🗑️ Remove Photo
             </button>
           )}
+          {!!photoHistoryCount && onOpenPhotoHistory && (
+            <button type="button" className="upload-photo-btn" onClick={onOpenPhotoHistory}>
+              🖼️ Photo History ({photoHistoryCount})
+            </button>
+          )}
         </div>
         <p className="group-participant-count">{participants.length} participant{participants.length !== 1 ? "s" : ""}</p>
         <div className="group-participants-list">
           {participants.map(name => {
             const displayName = displayNameOverrides[name] ?? name;
+            const linkedPhotoSrc = participantPhotoSrcs[name];
             return (
             <div key={name} className="group-participant-item">
-              <div className="group-participant-avatar">{getInitials(displayName)}</div>
+              {linkedPhotoSrc ? (
+                <img
+                  src={linkedPhotoSrc}
+                  alt={displayName}
+                  className="group-participant-avatar group-participant-avatar-img"
+                />
+              ) : (
+                <div className="group-participant-avatar">{getInitials(displayName)}</div>
+              )}
               <span className="group-participant-name">{displayName}</span>
               {formerMembers?.has(name) && (
                 <span className="former-member-badge" title="No longer in this group">Former member</span>

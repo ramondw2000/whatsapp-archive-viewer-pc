@@ -22,6 +22,8 @@ interface ProfileDialogProps {
   onResetName: () => void;
   onPhotoClick: (base64Data: string) => void;
   onPhotoRemove: () => void;
+  photoHistoryCount?: number;
+  onOpenPhotoHistory?: () => void;
   linkedGroups?: ChatMeta[];
   onRemoveGroup?: (chatId: string) => void;
   contactLinked?: boolean;
@@ -51,6 +53,8 @@ export function ProfileDialog({
   onResetName,
   onPhotoClick,
   onPhotoRemove,
+  photoHistoryCount,
+  onOpenPhotoHistory,
   linkedGroups,
   onRemoveGroup,
   contactLinked,
@@ -137,6 +141,11 @@ export function ProfileDialog({
               🗑️ Remove Photo
             </button>
           )}
+          {isEditing && !!photoHistoryCount && onOpenPhotoHistory && (
+            <button type="button" className="upload-photo-btn" onClick={onOpenPhotoHistory}>
+              🖼️ Photo History ({photoHistoryCount})
+            </button>
+          )}
         </div>
         <div className="profile-form">
           <label>Display Name</label>
@@ -173,7 +182,7 @@ export function ProfileDialog({
             <textarea
               value={profileNotes}
               onChange={(e) => onNotesChange(e.target.value)}
-              placeholder="Add notes about this chat..."
+              placeholder="Add notes about this chat…"
               rows={4}
             />
           ) : (
@@ -305,7 +314,7 @@ export function ProfileDialog({
                     value={selectedLinkChatId}
                     onChange={(e) => setSelectedLinkChatId(e.target.value)}
                   >
-                    <option value="" disabled>Link to existing chat...</option>
+                    <option value="" disabled>Link to existing chat…</option>
                     {unlinkedChats.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}

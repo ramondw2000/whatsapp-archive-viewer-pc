@@ -35,7 +35,7 @@ function AudioBase64Inner({ chatId, filename, isVideo }: AudioBase64InnerProps) 
   }, [chatId, filename]);
 
   if (err) return <MediaFallback filename={filename} chatId={chatId} existsInZip={existsInZip} />;
-  if (!src) return <span className="media-audio-loading">Loading...</span>;
+  if (!src) return <span className="media-audio-loading">Loading…</span>;
   if (isVideo) return <video src={src} controls autoPlay className="lightbox-video" onClick={(e) => e.stopPropagation()} />;
   return <audio controls src={src} className="media-audio-player" />;
 }

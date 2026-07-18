@@ -2034,7 +2034,7 @@ html, body, #root {
 .message {
 
 
-  max-width: 65%;
+  max-width: min(65%, 640px);
 
   width: fit-content;
 
@@ -6406,6 +6406,12 @@ input, textarea {
 }
 
 
+.group-participant-avatar-img {
+  object-fit: cover;
+  background: var(--wa-border);
+}
+
+
 .group-participant-name {
 
 
@@ -7997,6 +8003,62 @@ input, textarea {
   color: white;
 
 
+}
+
+
+/* Photo History dialog — same media-grid layout as the Media tab, with reapply/delete
+   actions overlaid instead of a jump-to-message button */
+
+.photo-history-modal {
+  /* uses .bg-modal's default 420px width — sized to exactly fit the fixed 3-column grid below */
+}
+
+/* Fixed 3-wide x 4-tall viewport (12 cells) regardless of entry count, so deleting an entry
+   scrolls/empties a cell instead of shrinking the whole dialog and causing layout jump. Entries
+   beyond the first 12 scroll within this fixed area rather than growing it further. */
+.photo-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 120px);
+  grid-auto-rows: 120px;
+  gap: 6px;
+  width: 372px;
+  height: 498px;
+  margin: 12px auto 4px;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.photo-history-empty {
+  width: 372px;
+  height: 498px;
+  margin: 12px auto 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.photo-history-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.media-grid-item:hover .photo-history-actions {
+  opacity: 1;
+}
+
+.photo-history-actions .media-jump-btn {
+  position: static;
+  opacity: 1;
+}
+
+.photo-history-delete-btn:hover {
+  background: #e53935;
 }
 
 

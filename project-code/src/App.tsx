@@ -5,13 +5,14 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LazyMediaImage, useLazyVisibility, setMediaFallback, setToastCallback, showModuleToast } from "./LazyMediaImage";
 import { VirtualMessageList, VirtualMessageListRef } from "./VirtualMessageList";
-import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type CrossChatSearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, type Contact, type AutoLinkEvent, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
+import { type Message, type SearchFilters, type ChatMeta, type ChatData, type SearchResult, type CrossChatSearchResult, type Profile, type SortOrder, type NameHistoryEntry, type BackgroundHistoryEntry, type PhotoHistoryEntry, type Contact, type AutoLinkEvent, IMAGE_EXTS, VIDEO_EXTS, AUDIO_EXTS } from "./types";
 import { formatDate } from "./utils/formatDate";
 import { formatTime } from "./utils/formatTime";
 import { createRenderMessageText, highlightText, getSearchSnippet } from "./utils/textRendering";
 import { stripChatPrefix } from "./utils/stripChatPrefix";
 import { getSearchOverlayWidth } from "./utils/searchOverlayWidth";
 import { isNewerVersion } from "./utils/version";
+import { shouldUseMobileLayout } from "./utils/responsiveLayout";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { LoadingDots } from "./components/LoadingDots";
 import { JumpButton } from "./components/JumpButton";
@@ -26,6 +27,7 @@ import { LockScreen } from "./components/dialogs/LockScreen";
 import { PinSettingsDialog } from "./components/dialogs/PinSettingsDialog";
 import { GroupParticipantsDialog } from "./components/dialogs/GroupParticipantsDialog";
 import { ProfileDialog } from "./components/dialogs/ProfileDialog";
+import { PhotoHistoryDialog } from "./components/dialogs/PhotoHistoryDialog";
 import { AutoLinkReviewDialog } from "./components/dialogs/AutoLinkReviewDialog";
 import { GroupAvatar } from "./components/GroupAvatar";
 import { ProfileImage } from "./components/ProfileImage";
@@ -762,7 +764,7 @@ function StartScreen({ onOpenChats, onLock, hasPinSet, locked, onUnlock, onPinRe
                 disabled={isCheckingUpdates}
                 title="Check for Updates"
               >
-                {isCheckingUpdates ? "Checking..." : "Check for Updates"}
+                {isCheckingUpdates ? "Checking…" : "Check for Updates"}
               </button>
             )}
           </>
@@ -813,9 +815,9 @@ function App() {
   // Keep ref in sync with state so async callbacks always see current value
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
   const isAndroid = /android/i.test(navigator.userAgent);
-  const [isMobile, setIsMobile] = useState(() => isAndroid || window.innerWidth <= 900);
+  const [isMobile, setIsMobile] = useState(() => isAndroid || shouldUseMobileLayout());
   useEffect(() => {
-    const handler = () => setIsMobile(isAndroid || window.innerWidth <= 900);
+    const handler = () => setIsMobile(isAndroid || shouldUseMobileLayout());
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -971,6 +973,10 @@ function App() {
   const [editingProfilePhone, setEditingProfilePhone] = useState("");
   const [pendingProfilePhoto, setPendingProfilePhoto] = useState<string | null>(null);
   const [nameHistory, setNameHistory] = useState<NameHistoryEntry[]>([]);
+  const [photoHistory, setPhotoHistory] = useState<PhotoHistoryEntry[]>([]);
+  const [showPhotoHistoryDialog, setShowPhotoHistoryDialog] = useState(false);
+  const [contactPhotoHistory, setContactPhotoHistory] = useState<PhotoHistoryEntry[]>([]);
+  const [showContactPhotoHistoryDialog, setShowContactPhotoHistoryDialog] = useState(false);
   // Groups the *current chat's* linked contact (if any) appears in — shown in that chat's own Profile dialog
   const [chatContactGroups, setChatContactGroups] = useState<ChatMeta[]>([]);
   // Group-participant → shared contact profile editing
@@ -978,6 +984,7 @@ function App() {
   const [formerMembers, setFormerMembers] = useState<Set<string>>(new Set());
   const [allParticipantNames, setAllParticipantNames] = useState<string[]>([]);
   const [senderDisplayNames, setSenderDisplayNames] = useState<Record<string, string>>({});
+  const [participantPhotos, setParticipantPhotos] = useState<Record<string, string>>({});
   const [showParticipantDialog, setShowParticipantDialog] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [editingContactName, setEditingContactName] = useState("");
@@ -1073,6 +1080,7 @@ function App() {
     } else {
       setSenderDisplayNames({});
       setAllParticipantNames([]);
+      setParticipantPhotos({});
     }
   }, [selectedChat, messages.length, selectedChatData?.is_group]);
   async function loadProfile(chatId: string) {
@@ -1217,6 +1225,63 @@ function App() {
       console.error("Failed to load name history:", err);
     }
   }
+  async function loadPhotoHistory(chatId: string) {
+    try {
+      const history: PhotoHistoryEntry[] = await invoke("get_photo_history", { chatId });
+      setPhotoHistory(history);
+    } catch (err) {
+      console.error("Failed to load photo history:", err);
+    }
+  }
+  async function handleRestorePhoto(photoPath: string) {
+    if (!selectedChat) return;
+    try {
+      await invoke("restore_profile_photo", { chatId: selectedChat, photoPath });
+      setProfile(prev => prev ? { ...prev, photo_path: photoPath } : null);
+      setChats(prev => prev.map(c => c.id === selectedChat ? { ...c, photo_path: photoPath } : c));
+      setPendingProfilePhoto(null);
+      showToast("Photo restored.");
+    } catch (err) {
+      showToast("Failed to restore photo: " + err);
+    }
+  }
+  async function handleDeletePhotoHistoryEntry(id: number) {
+    if (!selectedChat) return;
+    try {
+      await invoke("delete_photo_history_entry", { chatId: selectedChat, id });
+      await loadPhotoHistory(selectedChat);
+    } catch (err) {
+      showToast("" + err);
+    }
+  }
+  async function loadContactPhotoHistory(contactId: string) {
+    try {
+      const history: PhotoHistoryEntry[] = await invoke("get_contact_photo_history", { contactId });
+      setContactPhotoHistory(history);
+    } catch (err) {
+      console.error("Failed to load contact photo history:", err);
+    }
+  }
+  async function handleRestoreContactPhoto(photoPath: string) {
+    if (!editingContact) return;
+    try {
+      await invoke("restore_contact_photo", { contactId: editingContact.id, photoPath });
+      setEditingContact(prev => prev ? { ...prev, photo_path: photoPath } : null);
+      setPendingContactPhoto(null);
+      showToast("Photo restored.");
+    } catch (err) {
+      showToast("Failed to restore photo: " + err);
+    }
+  }
+  async function handleDeleteContactPhotoHistoryEntry(id: number) {
+    if (!editingContact) return;
+    try {
+      await invoke("delete_contact_photo_history_entry", { contactId: editingContact.id, id });
+      await loadContactPhotoHistory(editingContact.id);
+    } catch (err) {
+      showToast("" + err);
+    }
+  }
   async function handleRestoreName(name: string) {
     if (!selectedChat) return;
     await invoke("revert_profile_name", { chatId: selectedChat, name });
@@ -1258,8 +1323,11 @@ function App() {
       showToast("Profile saved successfully!");
       // Refresh chat list to show updated name
       loadChatList();
-      // Refresh name history so the dialog live-updates
-      if (selectedChat) loadNameHistory(selectedChat);
+      // Refresh name/photo history so the dialog live-updates
+      if (selectedChat) {
+        loadNameHistory(selectedChat);
+        loadPhotoHistory(selectedChat);
+      }
     } catch (err) {
       console.error("Failed to save profile:", err);
       showToast("Failed to save profile: " + err);
@@ -1313,6 +1381,7 @@ function App() {
   function refreshParticipantBadges(names: string[]) {
     refreshLinkedParticipants(names);
     refreshFormerMembers(names);
+    refreshParticipantPhotos(names);
   }
   async function refreshSenderDisplayNames(names: string[]) {
     try {
@@ -1320,6 +1389,14 @@ function App() {
       setSenderDisplayNames(overrides);
     } catch (err) {
       console.error("Failed to load sender display names:", err);
+    }
+  }
+  async function refreshParticipantPhotos(names: string[]) {
+    try {
+      const photos: Record<string, string> = await invoke("get_photos_for_participants", { participantNames: names });
+      setParticipantPhotos(photos);
+    } catch (err) {
+      console.error("Failed to load participant photos:", err);
     }
   }
   async function checkPendingAutoLinks() {
@@ -1369,6 +1446,7 @@ function App() {
       setContactUnlinkedChats(unlinked);
       setContactLinkedChat(linkedChat);
       setShowParticipantDialog(true);
+      loadContactPhotoHistory(contact.id);
       // A shadow contact may have just been created — refresh the linked-status icons
       loadGroupParticipants().then(refreshParticipantBadges);
     } catch (err) {
@@ -1393,6 +1471,7 @@ function App() {
       setEditingContact(prev => prev ? { ...prev, name: editingContactName, notes: editingContactNotes, phone_number: editingContactPhone, photo_path: newPhotoPath } : null);
       setPendingContactPhoto(null);
       showToast("Profile saved successfully!");
+      loadContactPhotoHistory(editingContact.id);
       // If this contact is linked to the currently open chat, refresh its own profile too
       if (contactLinkedChat && selectedChat && contactLinkedChat.id === selectedChat) {
         loadProfile(selectedChat);
@@ -1764,7 +1843,7 @@ function App() {
   async function handleShareImport(zipPath: string) {
     if (importing) return;
     console.log("[SHARE IMPORT] Starting import from:", zipPath);
-    showToast("Importing chat from WhatsApp...");
+    showToast("Importing chat from WhatsApp…");
     setImporting(true);
     setImportProgress({ current: 0, total: 1 });
     setImportDetail(null);
@@ -1816,7 +1895,7 @@ function App() {
       try {
         const zipPath = await invoke<string | null>("get_pending_share");
         if (zipPath) {
-          showToast("Found shared chat, importing...");
+          showToast("Found shared chat, importing…");
           await handleShareImport(zipPath);
         }
       } catch (e) {
@@ -2495,12 +2574,12 @@ function FavoritesGallery({
   return (
     <div className="favorites-gallery">
       <div className="favorites-header">
-        <h3>Starred Messages</h3>
+        <h3>Favorite Messages</h3>
         <button className="favorites-close" onClick={onClose}>✕</button>
       </div>
       <div className="favorites-list">
         {messages.length === 0 ? (
-          <div className="favorites-empty">No starred messages yet</div>
+          <div className="favorites-empty">No favorite messages yet</div>
         ) : (
           messages.map((msg, index) => (
             <div key={index} onClick={() => { onClose(); onJumpToMessage((msg as any)._idx); }} style={{ cursor: "pointer" }}>
@@ -2779,6 +2858,9 @@ useEffect(() => {
           formerMembers={formerMembers}
           onEditParticipant={handleEditParticipant}
           displayNameOverrides={senderDisplayNames}
+          participantPhotos={participantPhotos}
+          photoHistoryCount={photoHistory.length}
+          onOpenPhotoHistory={() => setShowPhotoHistoryDialog(true)}
         />
       )}
       {showParticipantDialog && editingContact && (
@@ -2809,6 +2891,18 @@ useEffect(() => {
           unlinkedChats={contactUnlinkedChats}
           onLinkToChat={handleLinkContactToChat}
           onUnlink={handleUnlinkContact}
+          photoHistoryCount={contactPhotoHistory.length}
+          onOpenPhotoHistory={() => setShowContactPhotoHistoryDialog(true)}
+        />
+      )}
+      {showContactPhotoHistoryDialog && editingContact && (
+        <PhotoHistoryDialog
+          entries={contactPhotoHistory}
+          currentPhotoPath={pendingContactPhoto ?? editingContact.photo_path}
+          onClose={() => setShowContactPhotoHistoryDialog(false)}
+          onView={(base64Data) => setChatLightbox({ filename: base64Data, type: "image", sender: "Profile Photo", timestamp: "", index: 0, hideControls: true })}
+          onRestore={handleRestoreContactPhoto}
+          onDelete={handleDeleteContactPhotoHistoryEntry}
         />
       )}
       {showProfileDialog && selectedChat && (
@@ -2836,6 +2930,18 @@ useEffect(() => {
           contactLinked={!!profile?.contact_id}
           linkedChatName={profile?.contact_id ? "a shared contact" : null}
           onUnlink={profile?.contact_id ? handleUnlinkChatContact : undefined}
+          photoHistoryCount={photoHistory.length}
+          onOpenPhotoHistory={() => setShowPhotoHistoryDialog(true)}
+        />
+      )}
+      {showPhotoHistoryDialog && selectedChat && (
+        <PhotoHistoryDialog
+          entries={photoHistory}
+          currentPhotoPath={pendingProfilePhoto ?? profile?.photo_path}
+          onClose={() => setShowPhotoHistoryDialog(false)}
+          onView={(base64Data) => setChatLightbox({ filename: base64Data, type: "image", sender: "Profile Photo", timestamp: "", index: 0, hideControls: true })}
+          onRestore={handleRestorePhoto}
+          onDelete={handleDeletePhotoHistoryEntry}
         />
       )}
       {showBackgroundModal && (
@@ -2936,7 +3042,7 @@ useEffect(() => {
             {bgTab === "custom" && (
               <div className="bg-tab-content">
                 <button className="bg-modal-btn primary" onClick={handlePickCustomBackground}>
-                  🖼️ Browse image...
+                  🖼️ Browse image…
                 </button>
                 {backgroundHistory.length > 0 && (
                   <div className="bg-history-section" style={{ marginTop: "14px" }}>
@@ -3021,15 +3127,15 @@ useEffect(() => {
         <div className="dialog-overlay" onClick={() => setShowClearAllConfirm(false)}>
           <div className="dialog-content" onClick={e => e.stopPropagation()}>
             <button className="dialog-close-btn" onClick={() => setShowClearAllConfirm(false)}>×</button>
-            <h3>⚠️ Clear All Chats</h3>
+            <h3>⚠️ Delete All Chats</h3>
             <p><strong>Delete all {chats.length} chat{chats.length !== 1 ? 's' : ''} permanently?</strong></p>
-            <p>This cannot be undone. All messages and media will be removed.</p>
+            <p>This action cannot be undone. All messages and media will be removed.</p>
             <div className="dialog-buttons dialog-buttons--stacked">
               <button
                 className={`dialog-btn-primary ${!clearAllHasChanges ? 'disabled' : ''}`}
                 onClick={handleClearAllSaveAndDelete}
                 disabled={!clearAllHasChanges}
-                title={!clearAllHasChanges ? 'No unsaved changes found' : 'Back up your custom name/message edits, then delete everything'}
+                title={!clearAllHasChanges ? 'No changes found' : 'Back up your custom name/message edits, then delete everything'}
               >
                 Back Up Edits & Delete All
               </button>
@@ -3074,8 +3180,8 @@ useEffect(() => {
         <LoadingOverlay
           message={
             importProgress && importProgress.total > 1
-              ? `Importing chat ${importProgress.current} of ${importProgress.total}...`
-              : "Importing chat..."
+              ? `Importing chat ${importProgress.current} of ${importProgress.total}…`
+              : "Importing chat…"
           }
           detail={
             importDetail
@@ -3175,7 +3281,7 @@ useEffect(() => {
             disabled={chats.length === 0}
             title="Delete all chats permanently"
           >
-            🗑 Clear All
+            🗑 Delete All
           </button>
         </div>
         {/* Global Chat Search */}
@@ -3204,7 +3310,7 @@ useEffect(() => {
             <input
               type="text"
               className="chat-search-input"
-              placeholder={chatSearchMode === "chats" ? "Search chats..." : "Search all messages..."}
+              placeholder={chatSearchMode === "chats" ? "Search chats…" : "Search all messages…"}
               value={chatSearchQuery}
               onChange={handleChatSearch}
             />
@@ -3476,7 +3582,7 @@ useEffect(() => {
                       .catch(console.error);
                   }
                 }}
-                title="Starred messages"
+                title="Favorite messages"
               >
                 <svg viewBox="0 0 24 24" width="22" height="22" fill={showFavorites ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -3484,7 +3590,7 @@ useEffect(() => {
               </button>
               <button
                 className="profile-btn"
-                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); loadGroupParticipants().then(refreshParticipantBadges); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } }}
+                onClick={() => { setShowFavorites(false); setShowMediaGallery(false); setShowMessageSearch(false); if (selectedChatData?.is_group) { setShowGroupDialog(true); loadGroupParticipants().then(refreshParticipantBadges); } else { setShowProfileDialog(true); if (selectedChat) loadNameHistory(selectedChat); } if (selectedChat) loadPhotoHistory(selectedChat); }}
                 title={selectedChatData?.is_group ? "View participants" : "Edit profile"}
               >
                 <svg viewBox="0 0 24 24" className="profile-btn-icon">
@@ -3505,7 +3611,7 @@ useEffect(() => {
                 <div className="search-box">
                   <input
                     type="text"
-                    placeholder="Search messages..."
+                    placeholder="Search messages…"
                     value={showAdvancedSearch ? searchFilters.query : messageSearchQuery}
                     onChange={(e) => {
                       if (showAdvancedSearch) {
@@ -3596,7 +3702,7 @@ useEffect(() => {
                         <label>Sender:</label>
                         <input
                           type="text"
-                          placeholder="Filter by sender..."
+                          placeholder="Filter by sender…"
                           value={searchFilters.sender || ""}
                           onChange={(e) => setSearchFilters({...searchFilters, sender: e.target.value || null})}
                         />
@@ -3662,7 +3768,7 @@ useEffect(() => {
                                 </div>
                                 <div className="search-result-content">
                                   {highlightText(
-                                    result.content.slice(0, 100) + (result.content.length > 100 ? "..." : ""),
+                                    result.content.slice(0, 100) + (result.content.length > 100 ? "…" : ""),
                                     messageSearchQuery
                                   )}
                                 </div>
@@ -4066,7 +4172,7 @@ useEffect(() => {
               <h2>WhatsApp Archive Viewer</h2>
               <p>Select a chat from the sidebar or import a new one</p>
               <button className="import-btn large" onClick={handleImport} disabled={importing}>
-                {importing ? "Importing..." : "Import WhatsApp ZIP"}
+                {importing ? "Importing…" : "Import WhatsApp ZIP"}
               </button>
             </div>
           </div>

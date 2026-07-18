@@ -694,6 +694,19 @@ fn init_database() -> SqliteResult<Connection> {
         )",
         [],
     )?;
+    // Create profile photo history table — every photo ever set as a chat's (or group's)
+    // profile photo, kept even after "Remove Photo" clears the active one, so it can be
+    // browsed/restored later. See get_photo_history / restore_profile_photo / delete_photo_history_entry.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chat_photo_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            photo_path TEXT NOT NULL,
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
     // Create contacts table — a shared identity independent of any one chat, used to link
     // group participants to a 1-on-1 chat's profile (and to each other across groups).
     conn.execute(
@@ -705,6 +718,18 @@ fn init_database() -> SqliteResult<Connection> {
             notes TEXT,
             photo_path TEXT,
             phone_number TEXT
+        )",
+        [],
+    )?;
+    // Photo history for contacts — the same idea as chat_photo_history, but for a contact's
+    // own photo (e.g. a group participant edited directly, with no linked 1-on-1 chat at all).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS contact_photo_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id TEXT NOT NULL,
+            photo_path TEXT NOT NULL,
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
         )",
         [],
     )?;
@@ -3263,15 +3288,60 @@ fn get_profile(chat_id: String) -> Result<Profile, String> {
     }
 }
 
+// A freshly-picked photo always gets copied to a new, uniquely-named file (see
+// pick_profile_photo) even if it's byte-identical to something already known for this chat —
+// e.g. picking the exact same file twice. Without this check that produces a redundant
+// duplicate file plus a redundant history row for what is, content-wise, the same photo.
+// Searches this chat's history paths and its current active photo (which may predate the
+// history feature and so not yet appear there); returns the existing path on an exact match.
+fn find_duplicate_photo_in_history(conn: &Connection, chat_id: &str, new_photo: &str) -> Option<String> {
+    let new_bytes = fs::read(new_photo).ok()?;
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT DISTINCT photo_path FROM chat_photo_history WHERE chat_id = ?1") {
+        if let Ok(rows) = stmt.query_map(params![chat_id], |row| row.get::<_, String>(0)) {
+            candidates.extend(rows.flatten());
+        }
+    }
+    if let Ok(Some(current)) = conn.query_row(
+        "SELECT photo_path FROM profiles WHERE chat_id = ?1",
+        params![chat_id],
+        |row| row.get::<_, Option<String>>(0),
+    ) {
+        candidates.push(current);
+    }
+    candidates.into_iter()
+        .filter(|c| c != new_photo)
+        .find(|c| fs::read(c).map(|b| b == new_bytes).unwrap_or(false))
+}
+
 #[tauri::command]
 fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
     let conn = get_db();
-    // Fetch current name so we only record history when it actually changes
+    // Fetch current name so we only record history when it actually changes (photo history
+    // is deduplicated separately below, by content rather than by comparing to just this value)
     let current_name: Option<String> = conn.query_row(
         "SELECT name FROM profiles WHERE chat_id = ?1",
         params![&chat_id],
         |row| row.get(0),
     ).ok().flatten();
+    // Resolve a freshly-picked photo down to an existing file if its content is a duplicate;
+    // only genuinely new content (no match found) gets logged as a new history entry below.
+    let mut new_history_photo: Option<String> = None;
+    let effective_photo_path: Option<String> = match &photo_path {
+        Some(new_photo) => match find_duplicate_photo_in_history(&conn, &chat_id, new_photo) {
+            Some(existing_path) => {
+                if existing_path != *new_photo {
+                    let _ = fs::remove_file(new_photo);
+                }
+                Some(existing_path)
+            }
+            None => {
+                new_history_photo = Some(new_photo.clone());
+                Some(new_photo.clone())
+            }
+        },
+        None => None,
+    };
     conn.execute(
         "INSERT INTO profiles (chat_id, name, notes, photo_path, phone_number, profile_modified)
          VALUES (?1, ?2, ?3, ?4, ?5, 1)
@@ -3281,7 +3351,7 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
          photo_path = COALESCE(?4, photo_path),
          phone_number = COALESCE(?5, phone_number),
          profile_modified = 1",
-        params![&chat_id, &name, &notes, &photo_path, &phone_number],
+        params![&chat_id, &name, &notes, &effective_photo_path, &phone_number],
     ).map_err(|e| e.to_string())?;
     // Record name change in history if the name actually changed
     if let Some(new_name) = &name {
@@ -3295,6 +3365,13 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
                 params![&chat_id, new_name],
             ).map_err(|e| e.to_string())?;
         }
+    }
+    // Record photo change in history only for genuinely new content (see find_duplicate_photo_in_history)
+    if let Some(new_photo) = &new_history_photo {
+        conn.execute(
+            "INSERT INTO chat_photo_history (chat_id, photo_path) VALUES (?1, ?2)",
+            params![&chat_id, new_photo],
+        ).map_err(|e| e.to_string())?;
     }
     // Mirror into the linked contact, if this chat is tied to one, so a group participant's
     // resolved profile (and any other chat sharing that contact) sees the same update.
@@ -3311,7 +3388,7 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
              photo_path = COALESCE(?4, photo_path),
              phone_number = COALESCE(?5, phone_number)
              WHERE id = ?1",
-            params![&contact_id, &name, &notes, &photo_path, &phone_number],
+            params![&contact_id, &name, &notes, &effective_photo_path, &phone_number],
         ).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -3537,6 +3614,99 @@ fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), Stri
          ON CONFLICT(chat_id) DO UPDATE SET name = ?2",
         params![&chat_id, &name],
     ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PhotoHistoryEntry {
+    pub id: i64,
+    pub photo_path: String,
+    pub changed_at: String,
+}
+
+#[tauri::command]
+fn get_photo_history(chat_id: String) -> Result<Vec<PhotoHistoryEntry>, String> {
+    let conn = get_db();
+    let mut stmt = conn.prepare(
+        "SELECT id, photo_path, changed_at FROM chat_photo_history WHERE chat_id = ?1 ORDER BY changed_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let entries = stmt.query_map(params![&chat_id], |row| {
+        Ok(PhotoHistoryEntry {
+            id: row.get(0)?,
+            photo_path: row.get(1)?,
+            changed_at: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    Ok(entries.flatten().collect())
+}
+
+// Sets the active profile photo back to a path already sitting in this chat's photo history,
+// without adding a new history row (mirrors revert_profile_name not re-logging a name restore).
+#[tauri::command]
+fn restore_profile_photo(chat_id: String, photo_path: String) -> Result<(), String> {
+    let conn = get_db();
+    conn.execute(
+        "INSERT INTO profiles (chat_id, name, notes, photo_path)
+         VALUES (?1, NULL, NULL, ?2)
+         ON CONFLICT(chat_id) DO UPDATE SET photo_path = ?2",
+        params![&chat_id, &photo_path],
+    ).map_err(|e| e.to_string())?;
+    // Mirror into the linked contact, same as update_profile
+    let linked_contact_id: Option<String> = conn.query_row(
+        "SELECT contact_id FROM chats WHERE id = ?1",
+        params![&chat_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    if let Some(contact_id) = linked_contact_id {
+        conn.execute(
+            "UPDATE contacts SET photo_path = ?2 WHERE id = ?1",
+            params![&contact_id, &photo_path],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Removing a photo from history is separate from "Remove Photo" (which only clears the active
+// profiles.photo_path) — this permanently deletes a past photo, including its file on disk.
+// Refuses to delete whichever entry is currently the active photo; the user has to remove it
+// as the active photo first, so a chat is never left pointing at a file that no longer exists.
+#[tauri::command]
+fn delete_photo_history_entry(chat_id: String, id: i64) -> Result<(), String> {
+    let conn = get_db();
+    let entry_path: Option<String> = conn.query_row(
+        "SELECT photo_path FROM chat_photo_history WHERE id = ?1 AND chat_id = ?2",
+        params![id, &chat_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+    let Some(entry_path) = entry_path else { return Ok(()); };
+    let current_photo: Option<String> = conn.query_row(
+        "SELECT photo_path FROM profiles WHERE chat_id = ?1",
+        params![&chat_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    if current_photo.as_deref() == Some(entry_path.as_str()) {
+        return Err("This is the current photo — remove it as the active photo first.".to_string());
+    }
+    conn.execute("DELETE FROM chat_photo_history WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    // Only delete the underlying file once nothing else (this chat's other history rows, or a
+    // linked contact still holding the same path as its active photo) references it anymore.
+    let still_in_history: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_photo_history WHERE photo_path = ?1)",
+        params![&entry_path],
+        |row| row.get(0),
+    ).unwrap_or(true);
+    let still_active_elsewhere: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM profiles WHERE photo_path = ?1) OR EXISTS(SELECT 1 FROM contacts WHERE photo_path = ?1)",
+        params![&entry_path],
+        |row| row.get(0),
+    ).unwrap_or(true);
+    if !still_in_history && !still_active_elsewhere {
+        let profile_dir = get_app_data_dir().join("profile_photos");
+        let path = std::path::Path::new(&entry_path);
+        if path.starts_with(&profile_dir) {
+            let _ = fs::remove_file(path);
+        }
+    }
     Ok(())
 }
 
@@ -3862,9 +4032,51 @@ fn take_pending_auto_links() -> Vec<AutoLinkEvent> {
     }
 }
 
+// Same duplicate-content check as find_duplicate_photo_in_history, but for a contact's own
+// photo history rather than a chat's — contacts aren't always linked to a chat_id at all
+// (e.g. a group participant edited directly with no 1-on-1 chat), so this searches
+// contact_photo_history / contacts.photo_path instead.
+fn find_duplicate_contact_photo_in_history(conn: &Connection, contact_id: &str, new_photo: &str) -> Option<String> {
+    let new_bytes = fs::read(new_photo).ok()?;
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT DISTINCT photo_path FROM contact_photo_history WHERE contact_id = ?1") {
+        if let Ok(rows) = stmt.query_map(params![contact_id], |row| row.get::<_, String>(0)) {
+            candidates.extend(rows.flatten());
+        }
+    }
+    if let Ok(Some(current)) = conn.query_row(
+        "SELECT photo_path FROM contacts WHERE id = ?1",
+        params![contact_id],
+        |row| row.get::<_, Option<String>>(0),
+    ) {
+        candidates.push(current);
+    }
+    candidates.into_iter()
+        .filter(|c| c != new_photo)
+        .find(|c| fs::read(c).map(|b| b == new_bytes).unwrap_or(false))
+}
+
 #[tauri::command]
 fn update_contact_profile(contact_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
     let conn = get_db();
+    // Resolve a freshly-picked photo down to an existing file if its content is a duplicate;
+    // only genuinely new content (no match found) gets logged as a new history entry below.
+    let mut new_history_photo: Option<String> = None;
+    let effective_photo_path: Option<String> = match &photo_path {
+        Some(new_photo) => match find_duplicate_contact_photo_in_history(&conn, &contact_id, new_photo) {
+            Some(existing_path) => {
+                if existing_path != *new_photo {
+                    let _ = fs::remove_file(new_photo);
+                }
+                Some(existing_path)
+            }
+            None => {
+                new_history_photo = Some(new_photo.clone());
+                Some(new_photo.clone())
+            }
+        },
+        None => None,
+    };
     conn.execute(
         "UPDATE contacts SET
          name = COALESCE(?2, name),
@@ -3872,8 +4084,14 @@ fn update_contact_profile(contact_id: String, name: Option<String>, notes: Optio
          photo_path = COALESCE(?4, photo_path),
          phone_number = COALESCE(?5, phone_number)
          WHERE id = ?1",
-        params![&contact_id, &name, &notes, &photo_path, &phone_number],
+        params![&contact_id, &name, &notes, &effective_photo_path, &phone_number],
     ).map_err(|e| e.to_string())?;
+    if let Some(new_photo) = &new_history_photo {
+        conn.execute(
+            "INSERT INTO contact_photo_history (contact_id, photo_path) VALUES (?1, ?2)",
+            params![&contact_id, new_photo],
+        ).map_err(|e| e.to_string())?;
+    }
     // Mirror into the linked chat's own profile, if any.
     let linked_chat_id: Option<String> = conn.query_row(
         "SELECT id FROM chats WHERE contact_id = ?1",
@@ -3890,7 +4108,7 @@ fn update_contact_profile(contact_id: String, name: Option<String>, notes: Optio
              photo_path = COALESCE(?4, photo_path),
              phone_number = COALESCE(?5, phone_number),
              profile_modified = 1",
-            params![&chat_id, &name, &notes, &photo_path, &phone_number],
+            params![&chat_id, &name, &notes, &effective_photo_path, &phone_number],
         ).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -3913,6 +4131,81 @@ fn remove_contact_photo(contact_id: String) -> Result<(), String> {
             "UPDATE profiles SET photo_path = NULL WHERE chat_id = ?1",
             params![&chat_id],
         ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_contact_photo_history(contact_id: String) -> Result<Vec<PhotoHistoryEntry>, String> {
+    let conn = get_db();
+    let mut stmt = conn.prepare(
+        "SELECT id, photo_path, changed_at FROM contact_photo_history WHERE contact_id = ?1 ORDER BY changed_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let entries = stmt.query_map(params![&contact_id], |row| {
+        Ok(PhotoHistoryEntry {
+            id: row.get(0)?,
+            photo_path: row.get(1)?,
+            changed_at: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    Ok(entries.flatten().collect())
+}
+
+#[tauri::command]
+fn restore_contact_photo(contact_id: String, photo_path: String) -> Result<(), String> {
+    let conn = get_db();
+    conn.execute(
+        "UPDATE contacts SET photo_path = ?2 WHERE id = ?1",
+        params![&contact_id, &photo_path],
+    ).map_err(|e| e.to_string())?;
+    let linked_chat_id: Option<String> = conn.query_row(
+        "SELECT id FROM chats WHERE contact_id = ?1",
+        params![&contact_id],
+        |row| row.get(0),
+    ).ok();
+    if let Some(chat_id) = linked_chat_id {
+        conn.execute(
+            "UPDATE profiles SET photo_path = ?2 WHERE chat_id = ?1",
+            params![&chat_id, &photo_path],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_contact_photo_history_entry(contact_id: String, id: i64) -> Result<(), String> {
+    let conn = get_db();
+    let entry_path: Option<String> = conn.query_row(
+        "SELECT photo_path FROM contact_photo_history WHERE id = ?1 AND contact_id = ?2",
+        params![id, &contact_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+    let Some(entry_path) = entry_path else { return Ok(()); };
+    let current_photo: Option<String> = conn.query_row(
+        "SELECT photo_path FROM contacts WHERE id = ?1",
+        params![&contact_id],
+        |row| row.get(0),
+    ).ok().flatten();
+    if current_photo.as_deref() == Some(entry_path.as_str()) {
+        return Err("This is the current photo — remove it as the active photo first.".to_string());
+    }
+    conn.execute("DELETE FROM contact_photo_history WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    let still_in_history: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM contact_photo_history WHERE photo_path = ?1)",
+        params![&entry_path],
+        |row| row.get(0),
+    ).unwrap_or(true);
+    let still_active_elsewhere: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM contacts WHERE photo_path = ?1) OR EXISTS(SELECT 1 FROM profiles WHERE photo_path = ?1)",
+        params![&entry_path],
+        |row| row.get(0),
+    ).unwrap_or(true);
+    if !still_in_history && !still_active_elsewhere {
+        let profile_dir = get_app_data_dir().join("profile_photos");
+        let path = std::path::Path::new(&entry_path);
+        if path.starts_with(&profile_dir) {
+            let _ = fs::remove_file(path);
+        }
     }
     Ok(())
 }
@@ -3989,6 +4282,28 @@ fn get_display_names_for_participants(participant_names: Vec<String>) -> Result<
         }
     }
     Ok(overrides)
+}
+
+// Same idea as get_display_names_for_participants but for photos: a group participant linked
+// to a contact (via their own 1-on-1 chat) should show that contact's current photo in the
+// group's participant list, not just initials — and stay in sync whenever that photo changes,
+// since this is a live lookup rather than something copied onto the participant at link time.
+#[tauri::command]
+fn get_photos_for_participants(participant_names: Vec<String>) -> Result<HashMap<String, String>, String> {
+    let conn = get_db();
+    let mut photos = HashMap::new();
+    for name in participant_names {
+        let normalized = normalize_chat_name(&name);
+        let photo_path: Option<String> = conn.query_row(
+            "SELECT photo_path FROM contacts WHERE normalized_key = ?1 AND photo_path IS NOT NULL AND photo_path != ''",
+            params![&normalized],
+            |row| row.get(0),
+        ).ok();
+        if let Some(photo_path) = photo_path {
+            photos.insert(name, photo_path);
+        }
+    }
+    Ok(photos)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -6865,15 +7180,22 @@ pub fn run() {
             remove_profile_photo,
             get_name_history,
             revert_profile_name,
+            get_photo_history,
+            restore_profile_photo,
+            delete_photo_history_entry,
             pick_profile_photo,
             get_or_create_contact_for_participant,
             take_pending_auto_links,
             update_contact_profile,
             remove_contact_photo,
+            get_contact_photo_history,
+            restore_contact_photo,
+            delete_contact_photo_history_entry,
             get_contact_groups,
             remove_contact_group,
             get_linked_participants,
             get_display_names_for_participants,
+            get_photos_for_participants,
             get_group_participants,
             get_former_members,
             get_unlinked_one_on_one_chats,

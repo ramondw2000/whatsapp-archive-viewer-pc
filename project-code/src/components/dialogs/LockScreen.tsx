@@ -20,7 +20,7 @@ export function LockScreen({ onUnlock, onPinReset }: LockScreenProps) {
       if (ok) {
         onUnlock();
       } else {
-        setError("Incorrect PIN");
+        setError("Incorrect PIN.");
         setPin("");
       }
     } catch {
@@ -83,7 +83,7 @@ export function LockScreen({ onUnlock, onPinReset }: LockScreenProps) {
           <div>
             <p className="character-counter">
               No recovery question is set for this PIN, so it can't be reset from here. Your
-              chat data isn't encrypted by this lock — deleting the app's database (Clear All,
+              chat data isn't encrypted by this lock — deleting the app's database (Delete All,
               or removing the app data folder) is the only remaining way in, but that erases
               your archive.
             </p>

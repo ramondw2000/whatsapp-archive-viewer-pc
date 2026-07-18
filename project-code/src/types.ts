@@ -96,6 +96,12 @@ export interface BackgroundHistoryEntry {
   changed_at: string;
 }
 
+export interface PhotoHistoryEntry {
+  id: number;
+  photo_path: string;
+  changed_at: string;
+}
+
 export type SortOrder = "newest" | "oldest";
 
 // Extension sets for media type detection
