@@ -30,6 +30,7 @@ import { AutoLinkReviewDialog } from "./components/dialogs/AutoLinkReviewDialog"
 import { GroupAvatar } from "./components/GroupAvatar";
 import { ProfileImage } from "./components/ProfileImage";
 import { MediaFallback } from "./components/media/MediaFallback";
+import { MissingMedia } from "./components/media/MissingMedia";
 import { StickerImage } from "./components/media/StickerImage";
 import { GifPlayer } from "./components/media/GifPlayer";
 import { VideoPlayer } from "./components/media/VideoPlayer";
@@ -2442,7 +2443,14 @@ function MessageRenderer({
           showToast={showToast ?? (() => {})}
         />
       )}
-      {msg.content && !msg.content.includes("(file attached)") && !msg.content.includes("(bestand bijgevoegd)") && msg.type !== "location" && (
+      {/* Fallback for media-typed messages with no filename at all — e.g. WhatsApp's own
+          export wrote "<Media omitted>" as the content because the file wasn't included,
+          which is how the type got detected in the first place — as well as completely
+          empty messages that don't fit any other case. */}
+      {!msg.media && (["image","video","gif","audio","sticker","location","file"].includes(msg.type) || !msg.content) && (
+        <MissingMedia type={msg.type} />
+      )}
+      {msg.content && msg.content !== "<Media omitted>" && !msg.content.includes("(file attached)") && !msg.content.includes("(bestand bijgevoegd)") && !msg.content.includes("<Media weggelaten>") && msg.type !== "location" && (
         <div className="message-text">
           <ExpandableText content={msg.content} renderFn={renderMessageText} hideExpandButton={hideExpandButton} />
         </div>
@@ -3985,9 +3993,12 @@ useEffect(() => {
                             {msg.media && !["image","video","gif","audio","location","file","sticker"].includes(msg.type) && (
                               <MediaFallback filename={msg.media} />
                             )}
-                            {/* Fallback for completely empty messages */}
-                            {!msg.media && !msg.content && (
-                              <MediaFallback filename="(missing file)" />
+                            {/* Fallback for media-typed messages with no filename at all — e.g. WhatsApp's
+                                own export wrote "<Media omitted>" as the content because the file wasn't
+                                included, which is how the type got detected in the first place — as well
+                                as completely empty messages that don't fit any other case. */}
+                            {!msg.media && (["image","video","gif","audio","sticker","location","file"].includes(msg.type) || !msg.content) && (
+                              <MissingMedia type={msg.type} />
                             )}
                             {msg.content && msg.content !== `<Media omitted>` && 
                              msg.type !== "sticker" &&

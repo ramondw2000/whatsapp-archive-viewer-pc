@@ -8498,6 +8498,20 @@ input, textarea {
 }
 
 
+[data-theme="dark"] .media-fallback {
+  background: var(--wa-sidebar);
+  border-color: var(--wa-border);
+}
+
+[data-theme="dark"] .media-fallback-filename {
+  color: var(--wa-text);
+}
+
+[data-theme="dark"] .media-fallback-status {
+  color: var(--wa-text-secondary);
+}
+
+
 /*  Files List  */
 
 
