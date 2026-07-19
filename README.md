@@ -14,14 +14,20 @@ Built with **Tauri 2**, **React 19**, and **Rust**.
 - Full-text search within a chat, with advanced filters (date range, sender, message type)
 - Star/favorite messages
 - Customize chat backgrounds (default or custom images, with history)
-- Edit contact profiles — name, notes, phone number, photo, and name history
+- Edit chat, group, and contact profiles — name, notes, phone number, and photo, each with full history:
+  every photo you've ever set is kept even after removing it, browsable in a Media-tab-style gallery
+  with reapply/delete, and deduped by file content so re-uploading the same image doesn't pile up
+  duplicates. Name changes keep their own separate history too
 - Link a person's identity across every group they're in and their 1-on-1 chat, so profile edits made
   from any of them stay in sync ("contacts" feature — see `TODO.md` for current limitations). A custom
-  name overrides the raw exported sender name in both message bubbles and the Group Info participant list
+  name overrides the raw exported sender name in both message bubbles and the Group Info participant
+  list, and a linked contact's current photo appears as their avatar there too
 - Multi-select messages (long-press to start, click to toggle more, shift-click to select a range) with
   bulk favorite-toggling — an amber ring marks which message a shift-click will range from
 - Light/dark theme toggle; defaults to the OS's light/dark setting the first time the app runs
 - Export a single chat or all chats to ZIP, and re-import them later
+- Responsive window sizing — the two-pane layout adapts down to half-screen widths (scaled to your
+  actual monitor, not a fixed breakpoint) before falling back to single-pane navigation
 
 ## Prerequisites
 
