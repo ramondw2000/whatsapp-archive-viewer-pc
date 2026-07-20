@@ -2266,18 +2266,20 @@ function App() {
   }
   async function handleAdvancedSearch() {
     if (!selectedChat) return;
+    setHasSearched(true);
     // When only a From Date is set (no query, sender, type, or To Date), there's nothing to
     // actually filter/list — treat it as a straight jump to that date instead of a search.
     const dateFrom = searchFilters.date_from;
     if (!searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && dateFrom && !searchFilters.date_to) {
-      setHasSearched(true);
       try {
         const idx: number | null = await invoke("find_message_index_for_date", { chatId: selectedChat, date: dateFrom });
         setMessageSearchResults([]);
         setHighlightedIndices(new Set());
+        setSearchResultCursor(0);
         if (idx !== null) {
           scrollToResult(idx);
           setJumpedIndex(idx);
+          setHasSearched(false);
         }
       } catch (err) {
         console.error("Jump to date failed:", err);
@@ -3540,7 +3542,7 @@ useEffect(() => {
               )}
               <button
                 className="search-btn"
-                onClick={() => { const opening = !showMessageSearch; setShowMessageSearch(v => !v); setShowMediaGallery(false); setShowFavorites(false); setShowProfileDialog(false); setShowGroupDialog(false); if (opening && messageSearchQuery.trim()) { setTimeout(() => handleMessageSearch(), 0); } }}
+                onClick={() => { const opening = !showMessageSearch; setShowMessageSearch(v => !v); setShowMediaGallery(false); setShowFavorites(false); setShowProfileDialog(false); setShowGroupDialog(false); if (opening) { setHasSearched(false); setShowResultsList(false); } if (opening && messageSearchQuery.trim()) { setTimeout(() => handleMessageSearch(), 0); } }}
                 title="Search messages"
               >
                 🔍
@@ -3780,7 +3782,7 @@ useEffect(() => {
                     )}
                   </div>
                 )}
-                {messageSearchResults.length === 0 && hasSearched && (!showAdvancedSearch ? messageSearchQuery : true) && (
+                {messageSearchResults.length === 0 && hasSearched && (!showAdvancedSearch ? messageSearchQuery : (searchFilters.query.trim() || searchFilters.sender || searchFilters.msg_type || searchFilters.date_from || searchFilters.date_to)) && (
                   <div className="search-no-results">
                     {showAdvancedSearch && !searchFilters.query.trim() && !searchFilters.sender && !searchFilters.msg_type && searchFilters.date_from && !searchFilters.date_to
                       ? "No messages on or after that date"
