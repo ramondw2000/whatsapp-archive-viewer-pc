@@ -6350,9 +6350,11 @@ fn export_chat_modifications_internal(conn: &Connection, chat_id: &str) -> Resul
     let mut rename_stmt = conn.prepare(
         "SELECT r.message_index, r.original_filename, r.new_filename, m.timestamp, m.sender, m.content
          FROM chat_file_renames r
-         LEFT JOIN messages m ON m.id = (
-             SELECT id FROM messages m2 WHERE m2.chat_id = r.chat_id ORDER BY m2.id ASC LIMIT 1 OFFSET r.message_index
-         )
+         LEFT JOIN (
+             SELECT id, chat_id, timestamp, sender, content,
+                    ROW_NUMBER() OVER (PARTITION BY chat_id ORDER BY id ASC) - 1 AS row_idx
+             FROM messages
+         ) m ON m.chat_id = r.chat_id AND m.row_idx = r.message_index
          WHERE r.chat_id = ?1 ORDER BY r.changed_at ASC"
     ).map_err(|e| e.to_string())?;
     let renames: Vec<serde_json::Value> = rename_stmt.query_map([chat_id], |row| {
