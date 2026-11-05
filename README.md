@@ -29,6 +29,13 @@ Built with **Tauri 2**, **React 19**, and **Rust**.
 - Responsive window sizing — the two-pane layout adapts down to half-screen widths (scaled to your
   actual monitor, not a fixed breakpoint) before falling back to single-pane navigation
 
+## Chats too large to export the normal way
+
+Very large WhatsApp exports (2 GB and up) often fail to get off the phone. For those, use the Android
+companion app, [whatsapp-archive-downloader](https://github.com/ramondw2000/whatsapp-archive-downloader):
+share the export zip to it to save the zip on the phone (in `Downloads/WhatsAppArchives`), then copy it to
+the PC (for example over USB) and import it here.
+
 ## Prerequisites
 
 - **Node.js** 18+ and npm

@@ -859,10 +859,9 @@ function App() {
   const selectedChatRef = useRef<string | null>(null);
   // Keep ref in sync with state so async callbacks always see current value
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
-  const isAndroid = /android/i.test(navigator.userAgent);
-  const [isMobile, setIsMobile] = useState(() => isAndroid || shouldUseMobileLayout());
+  const [isMobile, setIsMobile] = useState(() => shouldUseMobileLayout());
   useEffect(() => {
-    const handler = () => setIsMobile(isAndroid || shouldUseMobileLayout());
+    const handler = () => setIsMobile(shouldUseMobileLayout());
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -1145,38 +1144,6 @@ function App() {
     }
   }
   async function handlePickCustomBackground() {
-    if (isMobile) {
-      // On Android, use a hidden <input type="file"> to avoid content URI issues
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const uint8 = new Uint8Array(arrayBuffer);
-          let binary = "";
-          const chunkSize = 8192;
-          for (let j = 0; j < uint8.length; j += chunkSize) {
-            binary += String.fromCharCode(...uint8.subarray(j, j + chunkSize));
-          }
-          const b64 = btoa(binary);
-          const ext = file.name.split(".").pop() ?? "jpg";
-          const savedPath = await invoke<string>("save_background_from_b64", { b64, ext });
-          // Also create a data URL for preview
-          const mimeMap: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml" };
-          const mime = mimeMap[ext.toLowerCase()] ?? "image/jpeg";
-          const dataUrl = `data:${mime};base64,${b64}`;
-          setPendingBackground(savedPath);
-          setPendingBackgroundSrc(dataUrl);
-        } catch (e) {
-          console.error("Failed to save background:", e);
-        }
-      };
-      input.click();
-      return;
-    }
     try {
       const path: string | null = await invoke("pick_global_background");
       if (path) {
@@ -1693,74 +1660,6 @@ function App() {
     }
   }
   async function handleImport() {
-    // On Android, tauri-plugin-dialog file picker does not work. Use a hidden
-    // <input type="file"> and send raw bytes to Rust via import_zip_from_bytes.
-    if (/android/i.test(navigator.userAgent)) {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".zip,application/zip,application/octet-stream";
-      input.multiple = true;
-      input.onchange = async () => {
-        const files = Array.from(input.files ?? []);
-        if (files.length === 0) return;
-        setImporting(true);
-        setImportProgress({ current: 0, total: files.length });
-        setImportDetail(null);
-        const importedIds: string[] = [];
-        try {
-          for (let i = 0; i < files.length; i++) {
-            setImportProgress({ current: i + 1, total: files.length });
-            const arrayBuffer = await files[i].arrayBuffer();
-            const uint8 = new Uint8Array(arrayBuffer);
-            let binary = "";
-            const chunkSize = 8192;
-            for (let j = 0; j < uint8.length; j += chunkSize) {
-              binary += String.fromCharCode(...uint8.subarray(j, j + chunkSize));
-            }
-            const b64 = btoa(binary);
-            const chatIds: string[] = await invoke("import_zip_from_bytes", { b64, filename: files[i].name });
-            importedIds.push(...chatIds);
-          }
-          // Use ref to get current selectedChat (avoids stale closure)
-          const currentChat = selectedChatRef.current;
-          console.log("[IMPORT] Refreshing after import, currentChat:", currentChat);
-          // Delay to ensure backend has finished writing
-          await new Promise(resolve => setTimeout(resolve, 300));
-          await loadChatList();
-          await refreshChatSearch();
-          setShowStartScreen(false);
-          {
-            const targetId = importedIds.length > 0 ? importedIds[importedIds.length - 1] : null;
-            if (targetId && targetId !== currentChat) {
-              // Always switch to the newly imported chat, even if a different one was already open
-              setSelectedChat(targetId);
-              setSelectedMessageIndices(new Set());
-              setMultiSelectMode(false);
-              setLastSelectedIndex(null);
-              setLastLongPressedIndex(null);
-            } else if (currentChat) {
-              // Nothing new to switch to, or the import updated the chat that's already open —
-              // refresh explicitly since setSelectedChat to an unchanged id won't retrigger the load effect
-              console.log("[IMPORT] Reloading messages and profile for chat:", currentChat);
-              await loadMessages(currentChat);
-              await loadProfile(currentChat);
-              invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
-              console.log("[IMPORT] Chat refresh complete");
-            }
-          }
-          showToast(`Imported ${importedIds.length} chat(s)`);
-          checkPendingAutoLinks();
-        } catch (err) {
-          showToast("Import failed: " + err);
-        } finally {
-          setImporting(false);
-          setImportProgress(null);
-          setImportDetail(null);
-        }
-      };
-      input.click();
-      return;
-    }
     setImporting(true);
     setImportProgress(null);
     setImportDetail(null);
@@ -1839,78 +1738,6 @@ function App() {
       setImportDetail(null);
     }
   }
-  // Called when app is opened via WhatsApp "Export Chat" share intent on Android
-  async function handleShareImport(zipPath: string) {
-    if (importing) return;
-    console.log("[SHARE IMPORT] Starting import from:", zipPath);
-    showToast("Importing chat from WhatsApp…");
-    setImporting(true);
-    setImportProgress({ current: 0, total: 1 });
-    setImportDetail(null);
-    try {
-      const chatIds: string[] = await invoke("import_from_export", { zipPath });
-      // Use ref to get current selectedChat (avoids stale closure)
-      const currentChat = selectedChatRef.current;
-      console.log("[SHARE IMPORT] Refreshing after import, currentChat:", currentChat);
-      // Delay to ensure backend has finished writing
-      await new Promise(resolve => setTimeout(resolve, 300));
-      await loadChatList();
-      await refreshChatSearch();
-      setShowStartScreen(false);
-      {
-        const targetId = chatIds.length > 0 ? chatIds[chatIds.length - 1] : null;
-        if (targetId && targetId !== currentChat) {
-          // Always switch to the newly imported chat, even if a different one was already open
-          setSelectedChat(targetId);
-          setSelectedMessageIndices(new Set());
-          setMultiSelectMode(false);
-          setLastSelectedIndex(null);
-          setLastLongPressedIndex(null);
-        } else if (currentChat) {
-          // Nothing new to switch to, or the import updated the chat that's already open —
-          // refresh explicitly since setSelectedChat to an unchanged id won't retrigger the load effect
-          console.log("[SHARE IMPORT] Reloading messages and profile for chat:", currentChat);
-          await loadMessages(currentChat);
-          await loadProfile(currentChat);
-          invoke<string>("get_media_base_dir", { chatId: currentChat }).then(setMediaBaseDir);
-          console.log("[SHARE IMPORT] Chat refresh complete");
-        }
-      }
-      setImportProgress({ current: 1, total: 1 });
-      checkPendingAutoLinks();
-    } catch (e) {
-      console.error("Share import failed:", e);
-    } finally {
-      setImporting(false);
-      setImportProgress(null);
-      setImportDetail(null);
-    }
-  }
-  // On Android: poll for share intents more aggressively (every 1 second)
-  useEffect(() => {
-    if (!isAndroid) return;
-    let cancelled = false;
-    const checkForShare = async () => {
-      if (cancelled) return;
-      try {
-        const zipPath = await invoke<string | null>("get_pending_share");
-        if (zipPath) {
-          showToast("Found shared chat, importing…");
-          await handleShareImport(zipPath);
-        }
-      } catch (e) {
-        // Silently ignore errors during polling
-      }
-    };
-    // Check immediately on mount
-    checkForShare();
-    // Poll every 1 second for faster detection
-    const interval = setInterval(checkForShare, 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
   // Poll import progress from backend while importing
   useEffect(() => {
     if (!importing) return;
@@ -3228,8 +3055,7 @@ useEffect(() => {
                 if (files.length > 0) {
                   setDefaultBackgrounds(files);
                 } else {
-                  // On Android the Rust command can't read bundled assets from filesystem,
-                  // fall back to the static index.json served by the WebView
+                  // Fall back to the static index.json served by the WebView
                   try {
                     const res = await fetch('/app_backgrounds/index.json');
                     const list: string[] = await res.json();

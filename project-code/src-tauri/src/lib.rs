@@ -2502,28 +2502,6 @@ fn convert_tiff_to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(png_buf)
 }
 
-fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
-    const CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = Vec::new();
-    let mut buffer = 0u32;
-    let mut bits = 0;
-    for ch in data.chars() {
-        if ch == '=' {
-            break;
-        }
-        if let Some(val) = CHARS.find(ch) {
-            buffer = (buffer << 6) | (val as u32);
-            bits += 6;
-            if bits >= 8 {
-                bits -= 8;
-                result.push((buffer >> bits) as u8);
-                buffer &= (1 << bits) - 1;
-            }
-        }
-    }
-    Ok(result)
-}
-
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
@@ -6152,27 +6130,6 @@ async fn pick_global_background(app: tauri::AppHandle) -> Result<Option<String>,
     }
 }
 
-#[tauri::command(async)]
-fn save_background_from_b64(b64: String, ext: String) -> Result<String, String> {
-    let bytes = base64_decode(&b64).map_err(|e| format!("Failed to decode base64: {}", e))?;
-    let bg_dir = get_app_data_dir().join("user_backgrounds");
-    fs::create_dir_all(&bg_dir).map_err(|e| e.to_string())?;
-    let safe_ext = match ext.to_lowercase().as_str() {
-        "jpg" | "jpeg" | "jfif" => "jpg",
-        "png" => "png",
-        "gif" => "gif",
-        "webp" => "webp",
-        "bmp" => "bmp",
-        "svg" => "svg",
-        _ => "jpg",
-    };
-    let filename = format!("{}.{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), safe_ext);
-    let out_path = bg_dir.join(&filename);
-    fs::write(&out_path, &bytes).map_err(|e| e.to_string())?;
-    Ok(out_path.to_string_lossy().to_string())
-}
-
 #[tauri::command]
 async fn read_file_as_base64(path: String) -> Result<String, String> {
     let app_data = get_app_data_dir();
@@ -6668,28 +6625,6 @@ async fn import_from_export(zip_path: String) -> Result<Vec<String>, String> {
     result
 }
 
-/// Android-only helper: the web frontend reads a ZIP file via <input type="file">
-/// and sends the raw bytes here (as a Vec<u8>). We write them to a temp cache file
-/// and then run the normal import pipeline. This avoids needing the file-dialog plugin
-/// which does not support Android.
-#[tauri::command]
-async fn import_zip_from_bytes(b64: String, filename: String) -> Result<Vec<String>, String> {
-    let filename = sanitize_filename(&filename)?;
-    let bytes = base64_decode(&b64).map_err(|e| format!("Failed to decode base64: {}", e))?;
-    let cache_path = get_app_data_dir().join("import_cache").join(&filename);
-    if let Some(parent) = cache_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::write(&cache_path, &bytes).map_err(|e| format!("Failed to write import cache: {}", e))?;
-    let path_str = cache_path.to_string_lossy().to_string();
-    let result = tauri::async_runtime::spawn_blocking(move || import_from_export_inner(path_str))
-        .await
-        .map_err(|e| e.to_string())??;
-    let _ = fs::remove_file(&cache_path);
-    run_post_import_reconciliation().await;
-    Ok(result)
-}
-
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn check_vc_redist() -> bool {
@@ -6736,14 +6671,6 @@ fn check_vc_redist() -> bool {
 #[tauri::command]
 fn install_vc_redist() -> Result<(), String> {
     Ok(()) // Not applicable on non-Windows
-}
-
-/// Android only: called by the frontend on mount to check if the app was opened
-/// via a share intent (e.g. WhatsApp "Export Chat"). Returns the zip path and
-/// clears the flag so it only fires once per share.
-#[tauri::command(async)]
-fn get_pending_share() -> Option<String> {
-    None
 }
 
 fn import_from_export_inner(zip_path: String) -> Result<Vec<String>, String> {
@@ -7289,7 +7216,6 @@ pub fn run() {
             link_contact_to_chat,
             unlink_contact_from_chat,
             pick_global_background,
-            save_background_from_b64,
             read_file_as_base64,
             list_default_backgrounds,
             set_message_type,
@@ -7307,13 +7233,11 @@ pub fn run() {
             export_chat_zip,
             export_all_chats_zip,
             import_from_export,
-            import_zip_from_bytes,
             get_import_progress,
             toggle_message_favorite,
             get_favorite_messages,
             check_vc_redist,
-            install_vc_redist,
-            get_pending_share
+            install_vc_redist
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
