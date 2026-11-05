@@ -772,19 +772,31 @@ function StartScreen({ onOpenChats, onLock, hasPinSet, locked, onUnlock, onPinRe
     checkForUpdates(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // While locked, any key opens the PIN prompt. A typed character is carried into the
+  // PIN field so the first keypress isn't lost. Modifier/navigation keys are ignored so
+  // e.g. Alt+Tab back into the window doesn't pop the prompt.
+  const [initialPin, setInitialPin] = useState("");
+  useEffect(() => {
+    if (!locked || showUnlockPrompt) return;
+    const IGNORED = new Set(["Shift", "Control", "Alt", "Meta", "Tab", "CapsLock", "Escape", "AltGraph", "OS"]);
+    const onKey = (e: KeyboardEvent) => {
+      if (IGNORED.has(e.key) || e.ctrlKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      setInitialPin(e.key.length === 1 ? e.key : "");
+      setShowUnlockPrompt(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked, showUnlockPrompt]);
   return (
     <>
-    <div className={`start-screen${locked ? ' start-screen--locked' : ''}`}>
+    <div
+      className={`start-screen${locked ? ' start-screen--locked' : ''}`}
+      onClick={locked ? () => { setInitialPin(""); setShowUnlockPrompt(true); } : undefined}
+      style={locked ? { cursor: "pointer" } : undefined}
+    >
       <div className="start-screen-header">
-        {locked ? (
-          <button
-            className="check-updates-button"
-            onClick={() => setShowUnlockPrompt(true)}
-            title="Unlock the app"
-          >
-            🔓 Unlock
-          </button>
-        ) : (
+        {locked ? null : (
           <>
             {hasPinSet && (
               <button
@@ -818,6 +830,9 @@ function StartScreen({ onOpenChats, onLock, hasPinSet, locked, onUnlock, onPinRe
       <div className="start-screen-content">
         <img src="/icon.svg" alt="App Logo" className="start-screen-logo" />
         <h1 className="start-screen-title">WhatsApp Archive Viewer</h1>
+        {locked && (
+          <p className="start-screen-unlock-hint">Click anywhere or press any key to unlock</p>
+        )}
         {!locked && (
           <button className="start-screen-button" onClick={onOpenChats}>
             Open Chat Overview
@@ -827,8 +842,10 @@ function StartScreen({ onOpenChats, onLock, hasPinSet, locked, onUnlock, onPinRe
     </div>
     {showUnlockPrompt && (
       <LockScreen
+        initialPin={initialPin}
         onUnlock={() => { setShowUnlockPrompt(false); onUnlock(); }}
         onPinReset={onPinReset}
+        onCancel={() => setShowUnlockPrompt(false)}
       />
     )}
     {updateMessage && !locked && (

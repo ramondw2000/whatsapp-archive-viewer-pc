@@ -1,13 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface LockScreenProps {
   onUnlock: () => void;
   onPinReset: () => void;
+  /** Pre-fills the PIN field, e.g. with the key that opened the prompt. */
+  initialPin?: string;
+  /** If given, Escape closes the prompt. */
+  onCancel?: () => void;
 }
 
-export function LockScreen({ onUnlock, onPinReset }: LockScreenProps) {
-  const [pin, setPin] = useState("");
+export function LockScreen({ onUnlock, onPinReset, initialPin = "", onCancel }: LockScreenProps) {
+  const [pin, setPin] = useState(initialPin);
+  useEffect(() => {
+    if (!onCancel) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
   const [error, setError] = useState<string | null>(null);
   const [recoveryQuestion, setRecoveryQuestion] = useState<string | null | undefined>(undefined);
   const [recoveryAnswer, setRecoveryAnswer] = useState("");
