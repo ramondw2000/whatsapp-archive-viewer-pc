@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
-import { invoke } from "@tauri-apps/api/core";
 import { useLazyVisibility } from "../../LazyMediaImage";
+import { useMediaSource, useMediaDims } from "../../utils/mediaSource";
 import { MediaFallback } from "./MediaFallback";
 
 interface VideoPlayerInnerProps {
@@ -13,42 +12,22 @@ interface VideoPlayerInnerProps {
 }
 
 function VideoPlayerInner({ chatId, filename, className, controls = true, autoPlay = false, onToggleType }: VideoPlayerInnerProps) {
-  const [src, setSrc] = useState<string>("");
-  const [err, setErr] = useState<string>("");
-  const [existsInZip, setExistsInZip] = useState(false);
+  const media = useMediaSource(chatId, filename);
 
-  useEffect(() => {
-    if (!chatId || !filename) return;
-
-    const clean = filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/g, "");
-    setSrc("");
-    setErr("");
-    setExistsInZip(false);
-
-    invoke<string>("get_media_as_base64", { chatId, filename: clean, mimeHint: null })
-      .then((data) => setSrc(data))
-      .catch(async (e) => {
-        const msg = String(e);
-        setErr(msg);
-        // Check if file exists in ZIP
-        try {
-          const inZip = await invoke<boolean>("check_file_in_zip", { chatId, filename: clean });
-          setExistsInZip(inZip);
-        } catch { /* ignore zip check errors */ }
-      });
-  }, [chatId, filename]);
-
-  if (err) return <MediaFallback filename={filename} className={className} chatId={chatId} existsInZip={existsInZip} />;
-  if (!src) return <div className="media-video-loading"><span>▶</span></div>;
+  if (media.error) return <MediaFallback filename={filename} className={className} chatId={chatId} existsInZip={media.existsInZip} />;
+  if (!media.src) return <div className="media-video-loading"><span>▶</span></div>;
 
   return (
     <div className="video-container">
       <video
-        src={src}
+        // #t=0.001 makes the browser paint the first frame as a thumbnail with preload=metadata
+        src={media.isFallback ? media.src : `${media.src}#t=0.001`}
         controls={controls}
         autoPlay={autoPlay}
+        preload="metadata"
         className={className ?? "chat-video"}
         onClick={(e) => e.stopPropagation()}
+        onError={media.onSourceError}
       />
       {onToggleType && (
         <button
@@ -67,30 +46,18 @@ interface VideoPlayerProps extends VideoPlayerInnerProps {
 
 export function VideoPlayer(props: VideoPlayerProps) {
   const { ref, isVisible, style, className } = useLazyVisibility();
-  const { index, ...innerProps } = props;
-  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
+  const { index: _index, ...innerProps } = props;
+  // Header-only dimension lookup (no video data is read or sent over IPC)
+  const dims = useMediaDims(innerProps.chatId, innerProps.filename, isVisible);
 
-  useEffect(() => {
-    if (!isVisible || !innerProps.chatId || !innerProps.filename) return;
-
-    const clean = innerProps.filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/g, "");
-
-    invoke<{ data: string; width: number; height: number }>("get_media_with_dims", {
-      chatId: innerProps.chatId,
-      filename: clean,
-      mimeHint: null
-    }).then(result => {
-      if (result.width > 0 && result.height > 0) {
-        const scale = Math.min(1, 300 / result.height);
-        setDims({ width: Math.round(result.width * scale), height: Math.round(result.height * scale) });
-      }
-    }).catch(() => {});
-  }, [isVisible, innerProps.chatId, innerProps.filename]);
-
-  const skeletonStyle = dims ? { width: dims.width, height: dims.height } : { width: 300, minHeight: 200 };
+  let skeletonStyle: React.CSSProperties = { width: 300, minHeight: 200 };
+  if (dims) {
+    const scale = Math.min(1, 300 / dims.height);
+    skeletonStyle = { width: Math.round(dims.width * scale), height: Math.round(dims.height * scale) };
+  }
 
   return (
-    <div ref={ref} style={style} className={className} data-lazy-video="true" data-index={index} data-filename={innerProps.filename} data-chat-id={innerProps.chatId}>
+    <div ref={ref} style={style} className={className}>
       {isVisible ? <VideoPlayerInner {...innerProps} /> : (
         <div className="media-skeleton" style={skeletonStyle}><div className="skeleton-shimmer"></div></div>
       )}

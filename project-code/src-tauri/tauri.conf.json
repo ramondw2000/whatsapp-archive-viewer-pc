@@ -24,6 +24,10 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
+          "$DATA/WhatsAppArchiveViewer/chats/**",
+          "$DATA/WhatsAppArchiveViewer/custom/**",
+          "$DATA/WhatsAppArchiveViewer/profile_photos/**",
+          "$DATA/WhatsAppArchiveViewer/user_backgrounds/**",
           "$APPDATA/WhatsAppArchiveViewer/chats/**",
           "$APPDATA/WhatsAppArchiveViewer/custom/**",
           "$APPDATA/WhatsAppArchiveViewer/profile_photos/**",

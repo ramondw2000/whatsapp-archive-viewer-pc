@@ -216,60 +216,83 @@ fn get_db() -> std::sync::MutexGuard<'static, Connection> {
 // MEDIA PRELOAD CACHE
 // ============================================================================
 
-/// LRU cache for preloaded media base64 data
-/// Key: "chat_id:filename", Value: base64 data URL
+/// Entries bigger than this (base64 length) are never kept in the preload cache
+/// (videos / long audio would otherwise evict everything else).
+const MEDIA_CACHE_MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
+/// Total budget for the preload cache.
+const MEDIA_CACHE_MAX_TOTAL_BYTES: usize = 200 * 1024 * 1024;
+
+struct CachedMedia {
+    data: String,
+    width: u32,
+    height: u32,
+    tick: u64,
+}
+
+/// LRU cache for media base64 data URLs, bounded by total bytes.
+/// Key: "chat_id:filename". Recency is a monotonically increasing tick, so a
+/// hit is O(1); eviction (rare) scans for the smallest tick.
 struct MediaPreloadCache {
-    cache: HashMap<String, String>,
-    order: Vec<String>,
-    max_size: usize,
+    cache: HashMap<String, CachedMedia>,
+    total_bytes: usize,
+    max_bytes: usize,
+    tick: u64,
 }
 
 impl MediaPreloadCache {
-    fn new(max_size: usize) -> Self {
-        Self {
-            cache: HashMap::with_capacity(max_size),
-            order: Vec::with_capacity(max_size),
-            max_size,
-        }
+    fn new(max_bytes: usize) -> Self {
+        Self { cache: HashMap::new(), total_bytes: 0, max_bytes, tick: 0 }
     }
-    fn get(&mut self, key: &str) -> Option<String> {
-        if let Some(value) = self.cache.get(key) {
-            // Move to end (most recently used)
-            self.order.retain(|k| k != key);
-            self.order.push(key.to_string());
-            Some(value.clone())
-        } else {
-            None
-        }
+    /// Returns (data url, width, height) and marks the entry most recently used.
+    fn get(&mut self, key: &str) -> Option<(String, u32, u32)> {
+        self.tick += 1;
+        let tick = self.tick;
+        self.cache.get_mut(key).map(|e| {
+            e.tick = tick;
+            (e.data.clone(), e.width, e.height)
+        })
     }
-    fn set(&mut self, key: String, value: String) {
-        if self.cache.contains_key(&key) {
-            // Update existing
-            self.cache.insert(key.clone(), value);
-            self.order.retain(|k| k != &key);
-            self.order.push(key);
-        } else {
-            // Insert new
-            if self.cache.len() >= self.max_size {
-                // Remove oldest
-                if !self.order.is_empty() {
-                    let oldest = self.order.remove(0);
-                    self.cache.remove(&oldest);
+    fn contains(&self, key: &str) -> bool {
+        self.cache.contains_key(key)
+    }
+    fn set(&mut self, key: String, data: String, width: u32, height: u32) {
+        let size = data.len();
+        if size > MEDIA_CACHE_MAX_ENTRY_BYTES || size > self.max_bytes {
+            return;
+        }
+        if let Some(old) = self.cache.remove(&key) {
+            self.total_bytes -= old.data.len();
+        }
+        while self.total_bytes + size > self.max_bytes {
+            let oldest = self.cache.iter().min_by_key(|(_, v)| v.tick).map(|(k, _)| k.clone());
+            match oldest {
+                Some(k) => {
+                    if let Some(old) = self.cache.remove(&k) {
+                        self.total_bytes -= old.data.len();
+                    }
                 }
+                None => break,
             }
-            self.cache.insert(key.clone(), value);
-            self.order.push(key);
         }
+        self.tick += 1;
+        self.total_bytes += size;
+        self.cache.insert(key, CachedMedia { data, width, height, tick: self.tick });
     }
 }
 
-// Global media preload cache with 100 entry capacity
 fn get_media_preload_cache() -> &'static Mutex<MediaPreloadCache> {
     static CACHE: OnceLock<Mutex<MediaPreloadCache>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(MediaPreloadCache::new(100)))
+    CACHE.get_or_init(|| Mutex::new(MediaPreloadCache::new(MEDIA_CACHE_MAX_TOTAL_BYTES)))
 }
 
-use std::io::Read;
+/// Small cache of media dimensions (key "chat_id:filename") so dimension lookups
+/// never re-read or re-decode files.
+fn get_media_dims_cache() -> &'static Mutex<HashMap<String, (u32, u32)>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, (u32, u32)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -861,7 +884,7 @@ fn backfill_epochs(conn: &Connection) {
 
 use tauri_plugin_dialog::DialogExt;
 use tauri::Manager;
-#[tauri::command]
+#[tauri::command(async)]
 fn list_default_backgrounds(app: tauri::AppHandle) -> Vec<String> {
     let image_exts = ["png", "jpg", "jpeg", "jfif", "gif", "webp", "bmp", "tiff", "tif", "avif", "svg", "ico"];
     // Try multiple possible locations
@@ -1305,7 +1328,7 @@ fn find_message_index_for_date_impl(conn: &Connection, chat_id: &str, target_epo
     Ok(None)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn find_message_index_for_date(chat_id: String, date: String) -> Result<Option<i64>, String> {
     let conn = get_db();
     let target_epoch = iso_date_to_epoch(&date, false)
@@ -2001,7 +2024,7 @@ fn parse_chat_text(content: &str, _chat_dir: &Path, import_dir: &Path) -> Result
     Ok(messages)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_chat_list() -> Result<Vec<ChatMeta>, String> {
     let conn = get_db();
     backfill_epochs(&conn);
@@ -2028,7 +2051,7 @@ fn get_chat_list() -> Result<Vec<ChatMeta>, String> {
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<ChatData, String> {
     let conn = get_db();
     let query = match (limit, offset) {
@@ -2069,7 +2092,7 @@ fn get_chat_messages(chat_id: String, limit: Option<i64>, offset: Option<i64>) -
     Ok(ChatData { messages: result })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_chat_message_count(chat_id: String) -> Result<i64, String> {
     let conn = get_db();
     let count: i64 = conn.query_row(
@@ -2080,7 +2103,7 @@ fn get_chat_message_count(chat_id: String) -> Result<i64, String> {
     Ok(count)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_media_base_dir(chat_id: String) -> String {
     let app_data = get_app_data_dir();
     app_data.join("chats").join(&chat_id).join("media")
@@ -2119,38 +2142,48 @@ fn mime_for_ext(ext: &str) -> &'static str {
     }
 }
 
-#[tauri::command]
+/// Strip Unicode directional/zero-width marks WhatsApp embeds in filenames, then
+/// reduce to a safe basename.
+fn clean_media_filename(filename: &str) -> Result<String, String> {
+    let cleaned: String = filename.chars().filter(|c| !matches!(*c,
+        '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
+        '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
+    )).collect();
+    sanitize_filename(&cleaned)
+}
+
+fn media_path_for(chat_id: &str, filename_clean: &str) -> PathBuf {
+    get_app_data_dir().join("chats").join(chat_id).join("media").join(filename_clean)
+}
+
+fn is_video_ext(ext: &str) -> bool {
+    matches!(ext, "mp4" | "mov" | "avi" | "mkv" | "webm" | "m4v" | "ts" | "3gp")
+}
+
+#[tauri::command(async)]
 fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<String>) -> Result<String, String> {
     // Check preload cache first
     let cache_key = format!("{}:{}", chat_id, filename);
     {
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-        if let Some(cached) = cache.get(&cache_key) {
+        if let Some((cached, _, _)) = cache.get(&cache_key) {
             return Ok(cached);
         }
     }
     validate_chat_id(&chat_id)?;
-    let app_data = get_app_data_dir();
-    // Strip Unicode directional/zero-width marks WhatsApp embeds in filenames
-    let filename_clean: String = filename.chars().filter(|c| !matches!(*c,
-        '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
-        '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
-    )).collect();
-    let filename_clean = sanitize_filename(&filename_clean)?;
-    let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
+    let filename_clean = clean_media_filename(&filename)?;
+    let media_path = media_path_for(&chat_id, &filename_clean);
     let bytes = if media_path.exists() {
         fs::read(&media_path).map_err(|e| e.to_string())?
     } else {
         try_extract_from_zip(&chat_id, &filename_clean, &media_path)?
     };
+    let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     // Convert TIFF to PNG for browser compatibility (browsers can't render image/tiff)
-    let bytes = {
-        let ext_check = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        if ext_check == "tiff" || ext_check == "tif" {
-            convert_tiff_to_png(&bytes).unwrap_or(bytes)
-        } else {
-            bytes
-        }
+    let bytes = if ext == "tiff" || ext == "tif" {
+        convert_tiff_to_png(&bytes).unwrap_or(bytes)
+    } else {
+        bytes
     };
     let b64 = base64_encode(&bytes);
     // If caller supplies a mime_hint (e.g. for extensionless files), use it directly
@@ -2159,16 +2192,14 @@ fn get_media_as_base64(chat_id: String, filename: String, mime_hint: Option<Stri
             return Ok(format!("data:{};base64,{}", hint, b64));
         }
     }
-    let ext = media_path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
     let mime = mime_for_ext(ext.as_str());
     let result = format!("data:{};base64,{}", mime, b64);
-    // Store in preload cache
+    // Store in preload cache (oversized entries are skipped by the cache)
     {
+        let (w, h) = get_media_dims_cache().lock().ok()
+            .and_then(|m| m.get(&cache_key).copied()).unwrap_or((0, 0));
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-        cache.set(cache_key, result.clone());
+        cache.set(cache_key, result.clone(), w, h);
     }
     Ok(result)
 }
@@ -2234,45 +2265,35 @@ struct MediaWithDims {
     height: u32,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<String>) -> Result<MediaWithDims, String> {
-    // Check preload cache first
+    // Check preload cache first (dimensions are stored alongside the data)
     let cache_key = format!("{}:{}", chat_id, filename);
     {
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-        if let Some(cached) = cache.get(&cache_key) {
-            if let Some(data_start) = cached.find("base64,") {
-                let b64_data = &cached[data_start + 7..];
-                if let Ok(bytes) = base64_decode(b64_data) {
-                    let (width, height) = get_image_dimensions(&bytes).unwrap_or((0, 0));
-                    return Ok(MediaWithDims { data: cached.clone(), width, height });
-                }
-            }
-            return Ok(MediaWithDims { data: cached.clone(), width: 0, height: 0 });
+        if let Some((data, width, height)) = cache.get(&cache_key) {
+            return Ok(MediaWithDims { data, width, height });
         }
     }
     validate_chat_id(&chat_id)?;
-    let app_data = get_app_data_dir();
-    // Strip Unicode directional/zero-width marks WhatsApp embeds in filenames
-    let filename_clean: String = filename.chars().filter(|c| !matches!(*c,
-        '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
-        '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
-    )).collect();
-    let filename_clean = sanitize_filename(&filename_clean)?;
-    let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
+    let filename_clean = clean_media_filename(&filename)?;
+    let media_path = media_path_for(&chat_id, &filename_clean);
     let bytes = if media_path.exists() {
         fs::read(&media_path).map_err(|e| e.to_string())?
     } else {
         try_extract_from_zip(&chat_id, &filename_clean, &media_path)?
     };
-    // Get dimensions - try video first for video formats, then fall back to image
     let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm" | "m4v" | "ts");
-    let (width, height) = if is_video {
+    let (width, height) = if is_video_ext(&ext) {
         get_video_dimensions(&bytes).unwrap_or((0, 0))
     } else {
         get_image_dimensions(&bytes).unwrap_or((0, 0))
     };
+    if width > 0 && height > 0 {
+        if let Ok(mut m) = get_media_dims_cache().lock() {
+            m.insert(cache_key.clone(), (width, height));
+        }
+    }
     // Convert TIFF to PNG for browser compatibility (browsers can't render image/tiff)
     let bytes = if ext == "tiff" || ext == "tif" {
         convert_tiff_to_png(&bytes).unwrap_or(bytes)
@@ -2281,58 +2302,151 @@ fn get_media_with_dims(chat_id: String, filename: String, mime_hint: Option<Stri
     };
     let b64 = base64_encode(&bytes);
     // If caller supplies a mime_hint (e.g. for extensionless files), use it directly
-    if let Some(hint) = mime_hint {
-        if !hint.is_empty() {
-            let result = format!("data:{};base64,{}", hint, b64);
-            let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-            cache.set(cache_key, result.clone());
-            return Ok(MediaWithDims { data: result, width, height });
-        }
-    }
-    let mime = mime_for_ext(ext.as_str());
-    let result = format!("data:{};base64,{}", mime, b64);
+    let result = match mime_hint {
+        Some(hint) if !hint.is_empty() => format!("data:{};base64,{}", hint, b64),
+        _ => format!("data:{};base64,{}", mime_for_ext(ext.as_str()), b64),
+    };
     {
         let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-        cache.set(cache_key, result.clone());
+        cache.set(cache_key, result.clone(), width, height);
     }
     Ok(MediaWithDims { data: result, width, height })
 }
 
+#[derive(serde::Serialize)]
+struct MediaDims {
+    width: u32,
+    height: u32,
+}
+
+/// Dimensions only: reads just the file header (images) or the `moov` box
+/// (videos). Never returns media data and never extracts from the source
+/// archive; a missing/unreadable file yields 0x0.
+#[tauri::command(async)]
+fn get_media_dims(chat_id: String, filename: String) -> Result<MediaDims, String> {
+    validate_chat_id(&chat_id)?;
+    let cache_key = format!("{}:{}", chat_id, filename);
+    if let Ok(m) = get_media_dims_cache().lock() {
+        if let Some(&(width, height)) = m.get(&cache_key) {
+            return Ok(MediaDims { width, height });
+        }
+    }
+    let filename_clean = clean_media_filename(&filename)?;
+    let media_path = media_path_for(&chat_id, &filename_clean);
+    if !media_path.exists() {
+        return Ok(MediaDims { width: 0, height: 0 });
+    }
+    let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let (width, height) = if is_video_ext(&ext) {
+        File::open(&media_path).ok().and_then(|mut f| {
+            let len = f.metadata().ok()?.len();
+            video_dimensions_from_reader(&mut f, len)
+        }).unwrap_or((0, 0))
+    } else if ext == "svg" {
+        let mut buf = Vec::new();
+        if let Ok(f) = File::open(&media_path) {
+            let _ = f.take(64 * 1024).read_to_end(&mut buf);
+        }
+        get_image_dimensions(&buf).unwrap_or((0, 0))
+    } else {
+        image::ImageReader::open(&media_path).ok()
+            .and_then(|r| r.with_guessed_format().ok())
+            .and_then(|r| r.into_dimensions().ok())
+            .unwrap_or((0, 0))
+    };
+    if width > 0 && height > 0 {
+        if let Ok(mut m) = get_media_dims_cache().lock() {
+            if m.len() > 50_000 { m.clear(); }
+            m.insert(cache_key, (width, height));
+        }
+    }
+    Ok(MediaDims { width, height })
+}
+
 fn get_video_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
-    // Simple MP4/MOV dimension parser - looks for 'tkhd' (track header) box
-    // This is a basic implementation that works for most MP4/MOV files
-    let tkhd = b"tkhd";
-    for i in 0..bytes.len().saturating_sub(100) {
-        if &bytes[i..i+4] == tkhd {
-            // tkhd box found, dimensions are at offset +76 and +80 (version 0)
-            // or +88 and +92 (version 1) - try both
-            let version = bytes.get(i + 4)?;
-            let (width_offset, height_offset) = if *version == 0 {
-                (i + 76, i + 80)
-            } else {
-                (i + 88, i + 92)
-            };
-            if height_offset + 4 <= bytes.len() {
-                // Dimensions are stored as 32-bit fixed-point (16.16)
-                let width_raw = u32::from_be_bytes([
-                    bytes[width_offset],
-                    bytes[width_offset + 1],
-                    bytes[width_offset + 2],
-                    bytes[width_offset + 3],
-                ]);
-                let height_raw = u32::from_be_bytes([
-                    bytes[height_offset],
-                    bytes[height_offset + 1],
-                    bytes[height_offset + 2],
-                    bytes[height_offset + 3],
-                ]);
-                // Convert from 16.16 fixed point to integer
-                let width = width_raw >> 16;
-                let height = height_raw >> 16;
-                if width > 0 && height > 0 && width < 10000 && height < 10000 {
-                    return Some((width, height));
-                }
+    let mut cursor = std::io::Cursor::new(bytes);
+    video_dimensions_from_reader(&mut cursor, bytes.len() as u64)
+}
+
+/// Walks the top-level MP4/MOV boxes (seeking over `mdat`) to the `moov` box,
+/// then reads the first video track's `tkhd` dimensions. Reads only box
+/// headers plus the moov box itself, never the whole file.
+fn video_dimensions_from_reader<R: Read + Seek>(r: &mut R, len: u64) -> Option<(u32, u32)> {
+    const MAX_MOOV: u64 = 64 * 1024 * 1024;
+    let mut pos = 0u64;
+    while pos + 8 <= len {
+        r.seek(SeekFrom::Start(pos)).ok()?;
+        let mut h = [0u8; 8];
+        r.read_exact(&mut h).ok()?;
+        let mut size = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) as u64;
+        let mut hdr = 8u64;
+        if size == 1 {
+            let mut b = [0u8; 8];
+            r.read_exact(&mut b).ok()?;
+            size = u64::from_be_bytes(b);
+            hdr = 16;
+        } else if size == 0 {
+            size = len - pos;
+        }
+        if size < hdr {
+            return None;
+        }
+        if &h[4..8] == b"moov" {
+            let body = size - hdr;
+            if body > MAX_MOOV || pos + size > len {
+                return None;
             }
+            let mut buf = vec![0u8; body as usize];
+            r.read_exact(&mut buf).ok()?;
+            return moov_video_dimensions(&buf);
+        }
+        pos += size;
+    }
+    None
+}
+
+/// Child boxes of `buf` as (type, payload).
+fn iter_boxes(buf: &[u8]) -> Vec<([u8; 4], &[u8])> {
+    let mut out = Vec::new();
+    let mut p = 0usize;
+    while p + 8 <= buf.len() {
+        let mut size = u32::from_be_bytes([buf[p], buf[p + 1], buf[p + 2], buf[p + 3]]) as usize;
+        let typ = [buf[p + 4], buf[p + 5], buf[p + 6], buf[p + 7]];
+        let mut hdr = 8usize;
+        if size == 1 {
+            if p + 16 > buf.len() { break; }
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&buf[p + 8..p + 16]);
+            size = u64::from_be_bytes(b) as usize;
+            hdr = 16;
+        } else if size == 0 {
+            size = buf.len() - p;
+        }
+        if size < hdr || p + size > buf.len() { break; }
+        out.push((typ, &buf[p + hdr..p + size]));
+        p += size;
+    }
+    out
+}
+
+fn moov_video_dimensions(moov: &[u8]) -> Option<(u32, u32)> {
+    for (typ, trak) in iter_boxes(moov) {
+        if &typ != b"trak" { continue; }
+        for (ctyp, tkhd) in iter_boxes(trak) {
+            if &ctyp != b"tkhd" { continue; }
+            let version = *tkhd.first()?;
+            // Offsets are relative to the tkhd payload (version byte).
+            let (matrix_off, dim_off) = if version == 0 { (40usize, 76usize) } else { (48usize, 88usize) };
+            if tkhd.len() < dim_off + 8 { continue; }
+            let rd = |o: usize| u32::from_be_bytes([tkhd[o], tkhd[o + 1], tkhd[o + 2], tkhd[o + 3]]);
+            let mut width = rd(dim_off) >> 16;   // 16.16 fixed point
+            let mut height = rd(dim_off + 4) >> 16;
+            if width == 0 || height == 0 || width >= 20000 || height >= 20000 { continue; } // audio track etc.
+            // 90/270 degree rotation (phone portrait video): matrix a == 0, b != 0
+            if rd(matrix_off) == 0 && rd(matrix_off + 4) != 0 {
+                std::mem::swap(&mut width, &mut height);
+            }
+            return Some((width, height));
         }
     }
     None
@@ -2450,7 +2564,7 @@ fn extract_maps_url(text: &str) -> Option<String> {
     None
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_display_name(chat_id: String, message_idx: i64, display_name: String) -> Result<(), String> {
     let conn = get_db();
     let name = if display_name.trim().is_empty() { None::<String> } else { Some(display_name.trim().to_string()) };
@@ -2463,7 +2577,7 @@ fn set_display_name(chat_id: String, message_idx: i64, display_name: String) -> 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_file_tag(chat_id: String, message_idx: i64, tag_ext: String) -> Result<(), String> {
     let conn = get_db();
     let tag = if tag_ext.trim().is_empty() { None::<String> } else {
@@ -2478,7 +2592,7 @@ fn set_file_tag(chat_id: String, message_idx: i64, tag_ext: String) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, new_filename: String) -> Result<(), String> {
     validate_chat_id(&chat_id)?;
     let old_filename = sanitize_filename(&old_filename)?;
@@ -2513,7 +2627,7 @@ fn rename_media_file(chat_id: String, message_idx: i64, old_filename: String, ne
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_message_type(chat_id: String, message_idx: i64, msg_type: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -2532,7 +2646,7 @@ struct VCardContact {
     emails: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String> {
     validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
@@ -2593,7 +2707,7 @@ fn parse_vcard(chat_id: String, filename: String) -> Result<VCardContact, String
     Ok(VCardContact { name, phones, emails })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_vcard_whatsapp(chat_id: String, filename: String, method: String) -> Result<(), String> {
     validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
@@ -2657,7 +2771,7 @@ fn open_vcard_whatsapp(chat_id: String, filename: String, method: String) -> Res
         .map_err(|e| format!("Failed to open WhatsApp: {}", e))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
     validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
@@ -2679,7 +2793,7 @@ fn open_media_file(chat_id: String, filename: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_media_path(chat_id: String, filename: String) -> Result<String, String> {
     validate_chat_id(&chat_id)?;
     let filename = sanitize_filename(&filename)?;
@@ -2692,7 +2806,7 @@ fn get_media_path(chat_id: String, filename: String) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn check_file_in_zip(chat_id: String, filename: String) -> Result<bool, String> {
     let conn = get_db();
     let zip_path: Option<String> = conn.query_row(
@@ -2736,74 +2850,43 @@ fn check_file_in_zip(chat_id: String, filename: String) -> Result<bool, String> 
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn preload_media(chat_id: String, filenames: Vec<String>) -> Result<usize, String> {
-    let app_data = get_app_data_dir();
+    validate_chat_id(&chat_id)?;
     let mut loaded = 0;
     for filename in &filenames {
         let cache_key = format!("{}:{}", chat_id, filename);
         // Skip if already in cache
         {
-            let mut cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
-            if cache.get(&cache_key).is_some() {
+            let cache = get_media_preload_cache().lock().map_err(|e| e.to_string())?;
+            if cache.contains(&cache_key) {
                 continue;
             }
         }
-        // Strip Unicode directional/zero-width marks
-        let filename_clean: String = filename.chars().filter(|c| !matches!(*c,
-            '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' |
-            '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{200B}'
-        )).collect();
-        let media_path = app_data.join("chats").join(&chat_id).join("media").join(&filename_clean);
-        if !media_path.exists() {
+        let filename_clean = match clean_media_filename(filename) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let media_path = media_path_for(&chat_id, &filename_clean);
+        let ext = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        // Don't read big files (videos etc.) just to find out they won't be cached
+        let too_big = fs::metadata(&media_path)
+            .map(|m| m.len() as usize > MEDIA_CACHE_MAX_ENTRY_BYTES / 4 * 3)
+            .unwrap_or(true);
+        if too_big || is_video_ext(&ext) {
             continue;
         }
         if let Ok(bytes) = fs::read(&media_path) {
-            // Convert TIFF to PNG for browser compatibility
-            let bytes = {
-                let ext_check = media_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                if ext_check == "tiff" || ext_check == "tif" {
-                    convert_tiff_to_png(&bytes).unwrap_or(bytes)
-                } else {
-                    bytes
-                }
+            let (w, h) = get_image_dimensions(&bytes).unwrap_or((0, 0));
+            let bytes = if ext == "tiff" || ext == "tif" {
+                convert_tiff_to_png(&bytes).unwrap_or(bytes)
+            } else {
+                bytes
             };
             let b64 = base64_encode(&bytes);
-            let ext = media_path.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let mime = match ext.as_str() {
-                "jpg" | "jpeg" => "image/jpeg",
-                "png"          => "image/png",
-                "gif"          => "image/gif",
-                "webp"         => "image/webp",
-                "bmp"          => "image/bmp",
-                "tiff" | "tif" => "image/png",
-                "heic" | "heif" => "image/heic",
-                "svg"           => "image/svg+xml",
-                "mp4"          => "video/mp4",
-                "mov"          => "video/quicktime",
-                "avi"          => "video/x-msvideo",
-                "mkv"          => "video/x-matroska",
-                "webm"         => "video/webm",
-                "3gp" | "3gpp" => "audio/3gpp",
-                "m4v"          => "video/x-m4v",
-                "ts"           => "video/mp2t",
-                "opus"         => "audio/ogg; codecs=opus",
-                "ogg"          => "audio/ogg",
-                "mp3"          => "audio/mpeg",
-                "m4a"          => "audio/mp4",
-                "aac"          => "audio/aac",
-                "wav"          => "audio/wav",
-                "amr"          => "audio/amr",
-                "flac"         => "audio/flac",
-                _              => "application/octet-stream",
-            };
-            let result = format!("data:{};base64,{}", mime, b64);
-            // Store in preload cache
+            let result = format!("data:{};base64,{}", mime_for_ext(ext.as_str()), b64);
             if let Ok(mut cache) = get_media_preload_cache().lock() {
-                cache.set(cache_key, result);
+                cache.set(cache_key, result, w, h);
                 loaded += 1;
             }
         }
@@ -2811,7 +2894,7 @@ fn preload_media(chat_id: String, filenames: Vec<String>) -> Result<usize, Strin
     Ok(loaded)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn extract_file_from_zip(chat_id: String, filename: String) -> Result<String, String> {
     let conn = get_db();
     let zip_path: Option<String> = conn.query_row(
@@ -2930,7 +3013,7 @@ fn migrate_from_json() -> SqliteResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_chat(chat_id: String) -> Result<(), String> {
     validate_chat_id(&chat_id)?;
     let app_data = get_app_data_dir();
@@ -2954,7 +3037,7 @@ fn delete_chat(chat_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_all_chats() -> Result<u32, String> {
     let conn = get_db();
     let app_data = get_app_data_dir();
@@ -2978,12 +3061,12 @@ fn clear_all_chats() -> Result<u32, String> {
     }
     // Clear preload cache
     if let Ok(mut cache) = get_media_preload_cache().lock() {
-        *cache = MediaPreloadCache::new(50);
+        *cache = MediaPreloadCache::new(MEDIA_CACHE_MAX_TOTAL_BYTES);
     }
     Ok(count)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn migrate_chats() -> Result<i32, String> {
     migrate_from_json().map_err(|e| e.to_string())?;
     // Count migrated chats
@@ -3011,7 +3094,7 @@ pub struct SearchFilters {
     pub msg_type: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_messages(chat_id: String, query: String) -> Result<Vec<SearchResult>, String> {
     let conn = get_db();
     // Fetch all messages for this chat to get correct indices
@@ -3050,7 +3133,7 @@ fn search_messages(chat_id: String, query: String) -> Result<Vec<SearchResult>, 
     Ok(results)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<Vec<SearchResult>, String> {
     let conn = get_db();
     // Build WHERE clause dynamically based on filters
@@ -3155,7 +3238,7 @@ fn search_messages_filtered(chat_id: String, filters: SearchFilters) -> Result<V
     Ok(results)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_chats(query: String) -> Result<Vec<ChatMeta>, String> {
     let conn = get_db();
     let search_lower = format!("%{}%", query.to_lowercase());
@@ -3226,7 +3309,7 @@ fn search_messages_across_chats_impl(conn: &Connection, search_lower: &str, limi
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_messages_across_chats(query: String) -> Result<Vec<CrossChatSearchResult>, String> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
@@ -3247,7 +3330,7 @@ pub struct Profile {
     pub contact_id: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_profile(chat_id: String) -> Result<Profile, String> {
     let conn = get_db();
     let original_name: Option<String> = conn.query_row(
@@ -3314,7 +3397,7 @@ fn find_duplicate_photo_in_history(conn: &Connection, chat_id: &str, new_photo: 
         .find(|c| fs::read(c).map(|b| b == new_bytes).unwrap_or(false))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
     let conn = get_db();
     // Fetch current name so we only record history when it actually changes (photo history
@@ -3394,7 +3477,7 @@ fn update_profile(chat_id: String, name: Option<String>, notes: Option<String>, 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_profile_photo(chat_id: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -3471,14 +3554,14 @@ fn delete_app_setting(conn: &Connection, key: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn has_pin() -> Result<bool, String> {
     Ok(get_app_setting(&get_db(), "pin_hash")?.is_some())
 }
 
 // A recovery question + answer must be set alongside every PIN (initial set or change) —
 // it's what reset_pin_with_recovery_answer checks instead of a bare unauthenticated reset.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_pin(pin: String, recovery_question: String, recovery_answer: String) -> Result<(), String> {
     if pin.trim().is_empty() {
         return Err("PIN cannot be empty".to_string());
@@ -3493,7 +3576,7 @@ fn set_pin(pin: String, recovery_question: String, recovery_answer: String) -> R
     set_app_setting(&conn, "recovery_answer", recovery_answer.trim())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn verify_pin(pin: String) -> Result<bool, String> {
     match get_app_setting(&get_db(), "pin_hash")? {
         Some(hash) => verify_secret_hash(&pin, &hash),
@@ -3505,7 +3588,7 @@ fn verify_pin(pin: String) -> Result<bool, String> {
 // counterpart to change_recovery_question below, since the user can change either
 // independently. There's only ever one active PIN and one active recovery question stored
 // (single-row app_settings keys), so updating one in place can't desync from the other.
-#[tauri::command]
+#[tauri::command(async)]
 fn change_pin(current_pin: String, new_pin: String) -> Result<(), String> {
     if new_pin.trim().is_empty() {
         return Err("PIN cannot be empty".to_string());
@@ -3523,7 +3606,7 @@ fn change_pin(current_pin: String, new_pin: String) -> Result<(), String> {
 
 // Updates only the recovery question/answer, leaving the existing PIN untouched — the
 // counterpart to change_pin above.
-#[tauri::command]
+#[tauri::command(async)]
 fn change_recovery_question(current_pin: String, recovery_question: String, recovery_answer: String) -> Result<(), String> {
     if recovery_question.trim().is_empty() || recovery_answer.trim().is_empty() {
         return Err("A recovery question and answer are required".to_string());
@@ -3543,7 +3626,7 @@ fn change_recovery_question(current_pin: String, recovery_question: String, reco
 // separate piece of info from the PIN and there's no reason to lose it just because the PIN
 // was removed. It'll simply sit unused until a new PIN is set (set_pin always asks for a
 // fresh recovery question/answer at that point, overwriting whatever's left over).
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_pin(current_pin: String) -> Result<(), String> {
     let conn = get_db();
     match get_app_setting(&conn, "pin_hash")? {
@@ -3553,12 +3636,12 @@ fn clear_pin(current_pin: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_recovery_question() -> Result<Option<String>, String> {
     get_app_setting(&get_db(), "recovery_question")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_recovery_answer() -> Result<Option<String>, String> {
     get_app_setting(&get_db(), "recovery_answer")
 }
@@ -3571,7 +3654,7 @@ fn get_recovery_answer() -> Result<Option<String>, String> {
 // place and refusing to ever reset would only risk losing access to the archive, not protect it.
 // Only clears the PIN itself, same as clear_pin above — the recovery question/answer that was
 // just used to verify this reset stays in place rather than being thrown away.
-#[tauri::command]
+#[tauri::command(async)]
 fn reset_pin_with_recovery_answer(answer: String) -> Result<(), String> {
     let conn = get_db();
     match get_app_setting(&conn, "recovery_answer")? {
@@ -3588,7 +3671,7 @@ pub struct NameHistoryEntry {
     pub changed_at: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_name_history(chat_id: String) -> Result<Vec<NameHistoryEntry>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -3604,7 +3687,7 @@ fn get_name_history(chat_id: String) -> Result<Vec<NameHistoryEntry>, String> {
     Ok(entries.flatten().collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn revert_profile_name(chat_id: String, name: Option<String>) -> Result<(), String> {
     // name = Some(x) restores to x, name = None resets to original (clears profiles.name)
     let conn = get_db();
@@ -3624,7 +3707,7 @@ pub struct PhotoHistoryEntry {
     pub changed_at: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_photo_history(chat_id: String) -> Result<Vec<PhotoHistoryEntry>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -3642,7 +3725,7 @@ fn get_photo_history(chat_id: String) -> Result<Vec<PhotoHistoryEntry>, String> 
 
 // Sets the active profile photo back to a path already sitting in this chat's photo history,
 // without adding a new history row (mirrors revert_profile_name not re-logging a name restore).
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_profile_photo(chat_id: String, photo_path: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -3670,7 +3753,7 @@ fn restore_profile_photo(chat_id: String, photo_path: String) -> Result<(), Stri
 // profiles.photo_path) — this permanently deletes a past photo, including its file on disk.
 // Refuses to delete whichever entry is currently the active photo; the user has to remove it
 // as the active photo first, so a chat is never left pointing at a file that no longer exists.
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_photo_history_entry(chat_id: String, id: i64) -> Result<(), String> {
     let conn = get_db();
     let entry_path: Option<String> = conn.query_row(
@@ -3967,7 +4050,7 @@ fn link_chat_to_contact_if_match(conn: &Connection, chat_id: &str, is_group: boo
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_or_create_contact_for_participant(participant_name: String, group_chat_id: String) -> Result<Contact, String> {
     let conn = get_db();
     let normalized = normalize_chat_name(&participant_name);
@@ -4023,7 +4106,7 @@ fn get_or_create_contact_for_participant(participant_name: String, group_chat_id
 // Drains and returns any auto-links reconcile_contacts_and_chats has established since this was
 // last called, so the frontend can show a one-time review popup. Called once after each import
 // operation and once on initial app load (to catch whatever the startup pass found).
-#[tauri::command]
+#[tauri::command(async)]
 fn take_pending_auto_links() -> Vec<AutoLinkEvent> {
     let mutex = PENDING_AUTO_LINKS.get_or_init(|| Mutex::new(Vec::new()));
     match mutex.lock() {
@@ -4056,7 +4139,7 @@ fn find_duplicate_contact_photo_in_history(conn: &Connection, contact_id: &str, 
         .find(|c| fs::read(c).map(|b| b == new_bytes).unwrap_or(false))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_contact_profile(contact_id: String, name: Option<String>, notes: Option<String>, photo_path: Option<String>, phone_number: Option<String>) -> Result<(), String> {
     let conn = get_db();
     // Resolve a freshly-picked photo down to an existing file if its content is a duplicate;
@@ -4114,7 +4197,7 @@ fn update_contact_profile(contact_id: String, name: Option<String>, notes: Optio
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_contact_photo(contact_id: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -4135,7 +4218,7 @@ fn remove_contact_photo(contact_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_contact_photo_history(contact_id: String) -> Result<Vec<PhotoHistoryEntry>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -4151,7 +4234,7 @@ fn get_contact_photo_history(contact_id: String) -> Result<Vec<PhotoHistoryEntry
     Ok(entries.flatten().collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_contact_photo(contact_id: String, photo_path: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -4172,7 +4255,7 @@ fn restore_contact_photo(contact_id: String, photo_path: String) -> Result<(), S
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_contact_photo_history_entry(contact_id: String, id: i64) -> Result<(), String> {
     let conn = get_db();
     let entry_path: Option<String> = conn.query_row(
@@ -4210,7 +4293,7 @@ fn delete_contact_photo_history_entry(contact_id: String, id: i64) -> Result<(),
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_contact_groups(contact_id: String) -> Result<Vec<ChatMeta>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -4235,7 +4318,7 @@ fn get_contact_groups(contact_id: String) -> Result<Vec<ChatMeta>, String> {
     Ok(rows.flatten().collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_contact_group(contact_id: String, chat_id: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -4245,7 +4328,7 @@ fn remove_contact_group(contact_id: String, chat_id: String) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_linked_participants(participant_names: Vec<String>) -> Result<Vec<String>, String> {
     let conn = get_db();
     let mut linked = Vec::new();
@@ -4266,7 +4349,7 @@ fn get_linked_participants(participant_names: Vec<String>) -> Result<Vec<String>
 // Read-only lookup — never creates a contact, just reports the custom name already set on one
 // (via the contact's profile) if the participant has been linked before. Used to make a group's
 // per-message sender label reflect the contact's chosen name instead of the raw exported string.
-#[tauri::command]
+#[tauri::command(async)]
 fn get_display_names_for_participants(participant_names: Vec<String>) -> Result<HashMap<String, String>, String> {
     let conn = get_db();
     let mut overrides = HashMap::new();
@@ -4288,7 +4371,7 @@ fn get_display_names_for_participants(participant_names: Vec<String>) -> Result<
 // to a contact (via their own 1-on-1 chat) should show that contact's current photo in the
 // group's participant list, not just initials — and stay in sync whenever that photo changes,
 // since this is a live lookup rather than something copied onto the participant at link time.
-#[tauri::command]
+#[tauri::command(async)]
 fn get_photos_for_participants(participant_names: Vec<String>) -> Result<HashMap<String, String>, String> {
     let conn = get_db();
     let mut photos = HashMap::new();
@@ -5652,7 +5735,7 @@ fn merge_group_participants(senders: Vec<String>, events: Vec<(String, Membershi
 // added and removed before ever sending anything). Without the latter, a group where nobody who
 // was added/removed ever posted a real message would show 0 participants and no former-member
 // badges, even though the system messages clearly record former members.
-#[tauri::command]
+#[tauri::command(async)]
 fn get_group_participants(chat_id: String) -> Result<Vec<String>, String> {
     let conn = get_db();
     let senders: Vec<String> = {
@@ -5675,7 +5758,7 @@ fn get_group_participants(chat_id: String) -> Result<Vec<String>, String> {
     Ok(merge_group_participants(senders, events))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_former_members(chat_id: String, participant_names: Vec<String>) -> Result<Vec<String>, String> {
     let conn = get_db();
     let messages: Vec<String> = {
@@ -5700,7 +5783,7 @@ fn get_former_members(chat_id: String, participant_names: Vec<String>) -> Result
     Ok(former)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_linked_chat_for_contact(contact_id: String) -> Result<Option<ChatMeta>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -5722,7 +5805,7 @@ fn get_linked_chat_for_contact(contact_id: String) -> Result<Option<ChatMeta>, S
     Ok(result.ok())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_unlinked_one_on_one_chats() -> Result<Vec<ChatMeta>, String> {
     let conn = get_db();
     let mut stmt = conn.prepare(
@@ -5745,13 +5828,13 @@ fn get_unlinked_one_on_one_chats() -> Result<Vec<ChatMeta>, String> {
     Ok(rows.flatten().collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn link_contact_to_chat(contact_id: String, chat_id: String) -> Result<(), String> {
     let conn = get_db();
     link_chat_and_contact(&conn, &chat_id, &contact_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unlink_contact_from_chat(contact_id: String) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -5825,7 +5908,7 @@ fn resolve_modification_target(
         .and_then(|mut stmt| stmt.query_row(params![chat_id, idx], |row| row.get(0)).ok())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn export_chat_modifications(chat_id: String) -> Result<String, String> {
     let conn = get_db();
     // Build list of all modifications
@@ -5924,7 +6007,7 @@ fn export_chat_modifications(chat_id: String) -> Result<String, String> {
     serde_json::to_string(&all_modifications).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Result<(), String> {
     let conn = get_db();
     let modifications: Vec<serde_json::Value> =
@@ -5995,7 +6078,7 @@ fn apply_chat_modifications(chat_id: String, modifications_json: String) -> Resu
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn clear_modification_flags(chat_id: String) -> Result<(), String> {
     let conn = get_db();
     // Clear all message modification flags for this chat
@@ -6069,7 +6152,7 @@ async fn pick_global_background(app: tauri::AppHandle) -> Result<Option<String>,
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn save_background_from_b64(b64: String, ext: String) -> Result<String, String> {
     let bytes = base64_decode(&b64).map_err(|e| format!("Failed to decode base64: {}", e))?;
     let bg_dir = get_app_data_dir().join("user_backgrounds");
@@ -6126,7 +6209,7 @@ pub struct BackgroundHistoryEntry {
     pub changed_at: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn toggle_message_favorite(chat_id: String, message_idx: i64, is_favorite: bool) -> Result<(), String> {
     let conn = get_db();
     conn.execute(
@@ -6138,7 +6221,7 @@ fn toggle_message_favorite(chat_id: String, message_idx: i64, is_favorite: bool)
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_favorite_messages(chat_id: String) -> Result<ChatData, String> {
     let conn = get_db();
     // Get total message count first
@@ -6185,7 +6268,7 @@ struct ImportProgress {
     phase: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_import_progress() -> ImportProgress {
     let phase = match IMPORT_PHASE.load(Ordering::Relaxed) {
         1 => "Extracting files...",
@@ -6658,7 +6741,7 @@ fn install_vc_redist() -> Result<(), String> {
 /// Android only: called by the frontend on mount to check if the app was opened
 /// via a share intent (e.g. WhatsApp "Export Chat"). Returns the zip path and
 /// clears the flag so it only fires once per share.
-#[tauri::command]
+#[tauri::command(async)]
 fn get_pending_share() -> Option<String> {
     None
 }
@@ -7158,6 +7241,7 @@ pub fn run() {
             get_media_base_dir,
             get_media_as_base64,
             get_media_with_dims,
+            get_media_dims,
             preload_media,
             get_media_path,
             delete_chat,
@@ -8654,5 +8738,66 @@ mod tests {
             ("gerard".to_string(), MembershipEvent::Left),
         ];
         assert_eq!(merge_group_participants(senders, events), vec!["Anouk".to_string(), "Gerard".to_string()]);
+    }
+
+    // ---- media dimension / cache helpers ----
+
+    fn mp4_box(typ: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(&((payload.len() as u32 + 8).to_be_bytes()));
+        v.extend_from_slice(typ);
+        v.extend_from_slice(payload);
+        v
+    }
+
+    fn tkhd_v0(width: u32, height: u32, rotated: bool) -> Vec<u8> {
+        let mut p = vec![0u8; 84];
+        // matrix at payload offset 40: a, b, u, c, d, v, x, y, w
+        let (a, b) = if rotated { (0u32, 0x0001_0000u32) } else { (0x0001_0000u32, 0u32) };
+        p[40..44].copy_from_slice(&a.to_be_bytes());
+        p[44..48].copy_from_slice(&b.to_be_bytes());
+        p[76..80].copy_from_slice(&(width << 16).to_be_bytes());
+        p[80..84].copy_from_slice(&(height << 16).to_be_bytes());
+        mp4_box(b"tkhd", &p)
+    }
+
+    #[test]
+    fn video_dimensions__walks_boxes_and_skips_mdat() {
+        let mut file = mp4_box(b"ftyp", &[0u8; 8]);
+        file.extend(mp4_box(b"mdat", &vec![b't'; 4096])); // contains no tkhd marker we should trip over
+        let trak_audio = mp4_box(b"trak", &tkhd_v0(0, 0, false));
+        let trak_video = mp4_box(b"trak", &tkhd_v0(1920, 1080, false));
+        let mut moov_payload = trak_audio;
+        moov_payload.extend(trak_video);
+        file.extend(mp4_box(b"moov", &moov_payload));
+        assert_eq!(get_video_dimensions(&file), Some((1920, 1080)));
+    }
+
+    #[test]
+    fn video_dimensions__rotated_track_swaps_width_and_height() {
+        let mut file = mp4_box(b"ftyp", &[0u8; 8]);
+        file.extend(mp4_box(b"moov", &mp4_box(b"trak", &tkhd_v0(1920, 1080, true))));
+        assert_eq!(get_video_dimensions(&file), Some((1080, 1920)));
+    }
+
+    #[test]
+    fn video_dimensions__garbage_returns_none() {
+        assert_eq!(get_video_dimensions(&[1, 2, 3]), None);
+        assert_eq!(get_video_dimensions(&vec![0u8; 64]), None);
+    }
+
+    #[test]
+    fn media_cache__is_bounded_by_total_bytes_and_skips_oversized_entries() {
+        let mut c = MediaPreloadCache::new(100);
+        c.set("a".into(), "x".repeat(40), 1, 1);
+        c.set("b".into(), "x".repeat(40), 2, 2);
+        assert!(c.get("a").is_some()); // touch a so b is the LRU entry
+        c.set("c".into(), "x".repeat(40), 3, 3);
+        assert!(c.contains("a"));
+        assert!(!c.contains("b"));
+        assert!(c.contains("c"));
+        assert_eq!(c.get("c"), Some(("x".repeat(40), 3, 3)));
+        c.set("huge".into(), "x".repeat(101), 0, 0);
+        assert!(!c.contains("huge"));
     }
 }

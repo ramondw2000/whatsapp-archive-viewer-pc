@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { invoke } from "@tauri-apps/api/core";
+import { useMediaSource } from "../../utils/mediaSource";
 import { MediaFallback } from "./MediaFallback";
 
 interface MediaImageProps {
@@ -12,38 +11,26 @@ interface MediaImageProps {
 }
 
 export function MediaImage({ chatId, filename, alt, className, onError, onLoad }: MediaImageProps) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [hasError, setHasError] = useState(false);
-  const [existsInZip, setExistsInZip] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Loads are tied to the component lifecycle (the hook ignores results for
+  // unmounted / re-targeted cells), and the browser streams + decodes the file.
+  const media = useMediaSource(chatId, filename);
 
-  useEffect(() => {
-    if (!chatId || !filename) return;
+  if (media.error) return <MediaFallback filename={filename} className={className} chatId={chatId} existsInZip={media.existsInZip} />;
+  if (!media.src) return null;
 
-    setSrc(null);
-    setHasError(false);
-    setExistsInZip(false);
-    setLoading(true);
-
-    invoke<string>("get_media_as_base64", { chatId, filename, mimeHint: null })
-      .then((s) => {
-        setSrc(s);
-        setLoading(false);
-      })
-      .catch(async () => {
-        setHasError(true);
-        setLoading(false);
-        // Check if file exists in ZIP
-        try {
-          const inZip = await invoke<boolean>("check_file_in_zip", { chatId, filename });
-          setExistsInZip(inZip);
-        } catch { /* ignore */ }
-      });
-  }, [chatId, filename]);
-
-  if (hasError) return <MediaFallback filename={filename} className={className} chatId={chatId} existsInZip={existsInZip} />;
-  if (!src && loading) return null;
-  if (!src) return <MediaFallback filename={filename} className={className} chatId={chatId} existsInZip={existsInZip} />;
-
-  return <img src={src} alt={alt ?? filename} className={className} onError={(e) => { setHasError(true); onError?.(e); }} onLoad={onLoad} />;
+  return (
+    <img
+      src={media.src}
+      alt={alt ?? filename}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        const wasFallback = media.isFallback;
+        media.onSourceError();
+        if (wasFallback) onError?.(e);
+      }}
+      onLoad={onLoad}
+    />
+  );
 }

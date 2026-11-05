@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { invoke } from "@tauri-apps/api/core";
-import { mediaCache, showModuleToast } from "../../LazyMediaImage";
+import { showModuleToast } from "../../LazyMediaImage";
 
 interface MediaFallbackProps {
   filename: string;
@@ -20,8 +20,6 @@ export function MediaFallback({ filename, className, chatId, existsInZip, onRest
 
     try {
       await invoke("extract_file_from_zip", { chatId, filename });
-      // Evict from frontend cache so LazyMediaImage re-fetches from disk on next scroll
-      mediaCache.delete(`${chatId}:${filename}`);
       setRestoring(false);
       onRestored?.();
     } catch (e) {

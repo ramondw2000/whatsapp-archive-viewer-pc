@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { invoke } from "@tauri-apps/api/core";
 import { useLazyVisibility } from "../../LazyMediaImage";
+import { useMediaSource, useMediaDims } from "../../utils/mediaSource";
 import { MediaFallback } from "./MediaFallback";
 
 interface GifPlayerInnerProps {
@@ -11,32 +11,10 @@ interface GifPlayerInnerProps {
 }
 
 function GifPlayerInner({ chatId, filename, onToggleType, autoPlay = false }: GifPlayerInnerProps) {
-  const [src, setSrc] = useState<string>("");
+  const media = useMediaSource(chatId, filename);
+  const src = media.src;
   const [playing, setPlaying] = useState(autoPlay);
-  const [err, setErr] = useState<string>("");
-  const [existsInZip, setExistsInZip] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (!chatId || !filename) return;
-
-    const clean = filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/g, "");
-    setSrc("");
-    setErr("");
-    setExistsInZip(false);
-
-    invoke<string>("get_media_as_base64", { chatId, filename: clean, mimeHint: null })
-      .then((data) => setSrc(data))
-      .catch(async (e) => {
-        const msg = String(e);
-        setErr(msg);
-        // Check if file exists in ZIP
-        try {
-          const inZip = await invoke<boolean>("check_file_in_zip", { chatId, filename: clean });
-          setExistsInZip(inZip);
-        } catch { /* ignore zip check errors */ }
-      });
-  }, [chatId, filename]);
 
   useEffect(() => {
     if (autoPlay && src && videoRef.current) {
@@ -51,7 +29,7 @@ function GifPlayerInner({ chatId, filename, onToggleType, autoPlay = false }: Gi
     else { v.play(); setPlaying(true); }
   }
 
-  if (err) return <MediaFallback filename={filename} chatId={chatId} existsInZip={existsInZip} />;
+  if (media.error) return <MediaFallback filename={filename} chatId={chatId} existsInZip={media.existsInZip} />;
   if (!src) return <div className="gif-placeholder"><span className="gif-badge">GIF</span></div>;
 
   return (
@@ -64,6 +42,7 @@ function GifPlayerInner({ chatId, filename, onToggleType, autoPlay = false }: Gi
         playsInline
         className="gif-video"
         onEnded={() => setPlaying(false)}
+        onError={media.onSourceError}
         preload="metadata"
         onLoadedMetadata={() => { if (videoRef.current && !playing) videoRef.current.currentTime = 0.001; }}
       />
@@ -89,30 +68,17 @@ interface GifPlayerProps extends GifPlayerInnerProps {
 
 export function GifPlayer(props: GifPlayerProps) {
   const { ref, isVisible, style, className } = useLazyVisibility();
-  const { index, ...innerProps } = props;
-  const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
+  const { index: _index, ...innerProps } = props;
+  const dims = useMediaDims(innerProps.chatId, innerProps.filename, isVisible);
 
-  useEffect(() => {
-    if (!isVisible || !innerProps.chatId || !innerProps.filename) return;
-
-    const clean = innerProps.filename.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/g, "");
-
-    invoke<{ data: string; width: number; height: number }>("get_media_with_dims", {
-      chatId: innerProps.chatId,
-      filename: clean,
-      mimeHint: null
-    }).then(result => {
-      if (result.width > 0 && result.height > 0) {
-        const scale = Math.min(1, 300 / result.height);
-        setDims({ width: Math.round(result.width * scale), height: Math.round(result.height * scale) });
-      }
-    }).catch(() => {});
-  }, [isVisible, innerProps.chatId, innerProps.filename]);
-
-  const skeletonStyle = dims ? { width: dims.width, height: dims.height } : { width: 250, minHeight: 180 };
+  let skeletonStyle: React.CSSProperties = { width: 250, minHeight: 180 };
+  if (dims) {
+    const scale = Math.min(1, 300 / dims.height);
+    skeletonStyle = { width: Math.round(dims.width * scale), height: Math.round(dims.height * scale) };
+  }
 
   return (
-    <div ref={ref} style={style} className={className} data-lazy-gif="true" data-index={index} data-filename={innerProps.filename} data-chat-id={innerProps.chatId}>
+    <div ref={ref} style={style} className={className}>
       {isVisible ? <GifPlayerInner {...innerProps} /> : (
         <div className="media-skeleton" style={skeletonStyle}><div className="skeleton-shimmer"></div></div>
       )}

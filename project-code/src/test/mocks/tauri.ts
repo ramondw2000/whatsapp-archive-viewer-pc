@@ -9,6 +9,8 @@ export const mockInvoke = vi.fn().mockResolvedValue("");
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
+  // Mirrors the real helper's shape closely enough for assertions on asset URLs
+  convertFileSrc: (path: string) => `asset://localhost/${encodeURIComponent(path)}`,
 }));
 
 /**
@@ -22,11 +24,5 @@ vi.mock("../../LazyMediaImage", () => ({
     style: {},
     className: "",
   }),
-  mediaCache: {
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-    clear: vi.fn(),
-  },
   showModuleToast: vi.fn(),
 }));

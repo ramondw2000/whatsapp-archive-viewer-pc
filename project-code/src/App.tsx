@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Component } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Component } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -179,6 +179,31 @@ function FileImageInline(props: Parameters<typeof FileImageInlineInner>[0]) {
 }
 
 type MediaTab = "images" | "videos" | "audio" | "files";
+
+// Hoisted to module scope: Virtuoso treats a new `components` object / component
+// identity as a different list type and remounts the whole list on every render.
+const AudioListComponent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
+  <div {...props} ref={ref} className="media-audio-list" />
+));
+const FilesListComponent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
+  <div {...props} ref={ref} className="media-files-list" />
+));
+const AUDIO_LIST_COMPONENTS = { List: AudioListComponent };
+const FILES_LIST_COMPONENTS = { List: FilesListComponent };
+
+type IndexedMessage = Message & { _idx: number };
+
+function effectiveFileExt(m: Message): string {
+  const extOf = (s: string) => { const i = s.lastIndexOf("."); return (i > 0 && i < s.length - 1) ? s.slice(i + 1).toLowerCase() : ""; };
+  return extOf(m.display_name ?? "") || extOf(m.media ?? "") || (m.tag_ext ?? "");
+}
+
+function filterMediaByExt(msgs: IndexedMessage[], extFilter: string, useType?: boolean): IndexedMessage[] {
+  if (extFilter === "all") return msgs;
+  if (useType) return msgs.filter(m => m.type === extFilter);
+  return msgs.filter(m => effectiveFileExt(m) === extFilter);
+}
+
 function MediaGallery({
   messages,
   chatId,
@@ -201,10 +226,6 @@ function MediaGallery({
   const [showVcardModal, setShowVcardModal] = useState(false);
   const [vcardFilename, setVcardFilename] = useState<string>("");
   const [vcardContact, setVcardContact] = useState<{ name: string | null; phones: string[]; emails: string[] } | null>(null);
-  function effectiveFileExt(m: Message): string {
-    const extOf = (s: string) => { const i = s.lastIndexOf("."); return (i > 0 && i < s.length - 1) ? s.slice(i + 1).toLowerCase() : ""; };
-    return extOf(m.display_name ?? "") || extOf(m.media ?? "") || (m.tag_ext ?? "");
-  }
   function getExts(msgs: (Message & { _idx: number })[], useType?: boolean): string[] {
     const exts = new Set<string>();
     msgs.forEach(m => {
@@ -216,11 +237,6 @@ function MediaGallery({
       }
     });
     return Array.from(exts).sort();
-  }
-  function filterByExt<T extends { media?: string | null; type?: string }>(msgs: T[], useType?: boolean): T[] {
-    if (extFilter === "all") return msgs;
-    if (useType) return msgs.filter(m => (m as any).type === extFilter);
-    return msgs.filter(m => effectiveFileExt(m as unknown as Message) === extFilter);
   }
   function switchTab(tab: MediaTab) {
     onTabChange(tab);
@@ -260,17 +276,43 @@ function MediaGallery({
         });
     }
   }
-  const sortFn = (a: Message & { _idx: number }, b: Message & { _idx: number }) =>
-    sortOrder === "newest" ? b._idx - a._idx : a._idx - b._idx;
-  const indexed = messages.map((m, i) => ({ ...m, _idx: i }));
-  const imageMessages = indexed.filter(m => m.type === "image" && m.media).sort(sortFn);
-  const audioMessages = indexed.filter(m => m.type === "audio" && m.media).sort(sortFn);
-  const fileMessages  = indexed.filter(m => m.type === "file"  && m.media).sort(sortFn);
-  const videoMessages = indexed.filter(m => m.type === "video" && m.media).sort(sortFn);
-  const gifMessages   = indexed.filter(m => m.type === "gif"   && m.media).sort(sortFn);
+  // Derived lists are computed once per (messages, sortOrder), in a single pass
+  // that only allocates for messages that actually carry media.
+  const { imageMessages, audioMessages, fileMessages, videosMedia } = useMemo(() => {
+    const images: IndexedMessage[] = [];
+    const audio: IndexedMessage[] = [];
+    const files: IndexedMessage[] = [];
+    const videos: IndexedMessage[] = [];
+    const gifs: IndexedMessage[] = [];
+    const videosAndGifs: IndexedMessage[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (!m.media) continue;
+      let bucket: IndexedMessage[] | null = null;
+      switch (m.type) {
+        case "image": bucket = images; break;
+        case "audio": bucket = audio; break;
+        case "file": bucket = files; break;
+        case "video": bucket = videos; break;
+        case "gif": bucket = gifs; break;
+      }
+      if (!bucket) continue;
+      const item: IndexedMessage = { ...m, _idx: i };
+      bucket.push(item);
+      if (m.type === "video" || m.type === "gif") videosAndGifs.push(item);
+    }
+    // Buckets are in ascending message order; newest-first is just the reverse.
+    if (sortOrder === "newest") {
+      images.reverse(); audio.reverse(); files.reverse(); videos.reverse(); gifs.reverse(); videosAndGifs.reverse();
+    }
+    return { imageMessages: images, audioMessages: audio, fileMessages: files, videosMedia: videosAndGifs };
+  }, [messages, sortOrder]);
   // Per-tab media for lightbox navigation (same sort as grid display)
   const imagesMedia = imageMessages;
-  const videosMedia = [...videoMessages, ...gifMessages].sort(sortFn);
+  const imageItems = useMemo(() => filterMediaByExt(imageMessages, extFilter), [imageMessages, extFilter]);
+  const videoItems = useMemo(() => filterMediaByExt(videosMedia, extFilter, true), [videosMedia, extFilter]);
+  const audioItems = useMemo(() => filterMediaByExt(audioMessages, extFilter), [audioMessages, extFilter]);
+  const fileItems = useMemo(() => filterMediaByExt(fileMessages, extFilter), [fileMessages, extFilter]);
   function getTabMedia() {
     if (activeTab === "images") return imagesMedia;
     if (activeTab === "videos") return videosMedia;
@@ -325,7 +367,7 @@ function MediaGallery({
           onClick={() => switchTab("videos")}
         >
           Videos &amp; GIFs
-          <span className="media-tab-count">{videoMessages.length + gifMessages.length}</span>
+          <span className="media-tab-count">{videosMedia.length}</span>
         </button>
         <button
           className={`media-tab-btn${activeTab === "audio" ? " active" : ""}`}
@@ -356,7 +398,7 @@ function MediaGallery({
           const isVideoTab = activeTab === "videos";
           const pool =
             activeTab === "images" ? imageMessages :
-            isVideoTab ? [...videoMessages, ...gifMessages] :
+            isVideoTab ? videosMedia :
             activeTab === "audio"  ? audioMessages :
             fileMessages;
           const exts = getExts(pool, isVideoTab);
@@ -378,16 +420,18 @@ function MediaGallery({
       </div>
       <div className="media-gallery-content">
         {activeTab === "images" && (
-          filterByExt(imageMessages).length === 0 ? (
+          imageItems.length === 0 ? (
             <div className="media-empty">No photos</div>
           ) : (
             <VirtuosoGrid
               style={{ height: "100%" }}
-              totalCount={filterByExt(imageMessages).length}
+              totalCount={imageItems.length}
               listClassName="media-grid"
               itemClassName="media-grid-item-wrapper"
+              computeItemKey={(i) => imageItems[i]?._idx ?? i}
               itemContent={(i) => {
-                const msg = filterByExt(imageMessages)[i];
+                const msg = imageItems[i];
+                if (!msg) return null;
                 return (
                   <div
                     className="media-grid-item"
@@ -416,7 +460,6 @@ function MediaGallery({
           )
         )}
         {activeTab === "videos" && (() => {
-          const videoItems = filterByExt([...videoMessages, ...gifMessages], true).sort(sortFn);
           return videoItems.length === 0 ? (
             <div className="media-empty">No videos or GIFs</div>
           ) : (
@@ -425,8 +468,10 @@ function MediaGallery({
               totalCount={videoItems.length}
               listClassName="media-grid"
               itemClassName="media-grid-item-wrapper"
+              computeItemKey={(i) => videoItems[i]?._idx ?? i}
               itemContent={(i) => {
                 const msg = videoItems[i];
+                if (!msg) return null;
                 return (
                   <div
                     className={`media-grid-item${msg.type === "gif" ? " media-grid-item--gif" : " media-grid-item--video"}`}
@@ -453,14 +498,14 @@ function MediaGallery({
           );
         })()}
         {activeTab === "audio" && (() => {
-          const audioItems = filterByExt(audioMessages);
           return audioItems.length === 0 ? (
             <div className="media-empty">No audio files</div>
           ) : (
             <Virtuoso
               style={{ height: "100%" }}
               totalCount={audioItems.length}
-              components={{ List: React.forwardRef((props, ref) => <div {...props} ref={ref} className="media-audio-list" />) }}
+              components={AUDIO_LIST_COMPONENTS}
+              computeItemKey={(i) => audioItems[i]?._idx ?? i}
               itemContent={(i) => {
                 const msg = audioItems[i];
                 return (
@@ -490,14 +535,14 @@ function MediaGallery({
           );
         })()}
         {activeTab === "files" && (() => {
-          const fileItems = filterByExt(fileMessages);
           return fileItems.length === 0 ? (
             <div className="media-empty">No files</div>
           ) : (
             <Virtuoso
               style={{ height: "100%" }}
               totalCount={fileItems.length}
-              components={{ List: React.forwardRef((props, ref) => <div {...props} ref={ref} className="media-files-list" />) }}
+              components={FILES_LIST_COMPONENTS}
+              computeItemKey={(i) => fileItems[i]?._idx ?? i}
               itemContent={(i) => {
                 const msg = fileItems[i];
                 return (
@@ -880,9 +925,7 @@ function App() {
   const [lastLongPressedIndex, setLastLongPressedIndex] = useState<number | null>(null);
   // Chat media lightbox state
   const [chatLightbox, setChatLightbox] = useState<{ filename: string; type: "image" | "video" | "gif"; sender: string; timestamp: string; index: number; hideControls?: boolean } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const shouldScrollToBottom = useRef(false);
   // Scroll detection state
   const [chatScrollState, setChatScrollState] = useState<{ atTop: boolean; atBottom: boolean }>({ atTop: false, atBottom: true });
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -1567,50 +1610,8 @@ function App() {
       showToast("Failed to remove group: " + err);
     }
   }
-  // Auto-scroll to bottom only on fresh loads, and re-anchor while images are loading
-  const isInitialLoad = useRef(false);
-  useEffect(() => {
-    if (shouldScrollToBottom.current) {
-      shouldScrollToBottom.current = false;
-      isInitialLoad.current = true;
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
-    }
-  }, [messages]);
-  // Re-anchor to bottom as images/media finish loading after initial chat open
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const snapToBottom = () => {
-      if (isInitialLoad.current) {
-        container.scrollTop = container.scrollHeight;
-      }
-    };
-    // Attach load listeners to all existing images
-    const attachToImages = () => {
-      container.querySelectorAll("img, video").forEach((el) => {
-        el.addEventListener("load", snapToBottom, { once: true });
-        el.addEventListener("loadedmetadata", snapToBottom, { once: true });
-      });
-    };
-    attachToImages();
-    // Also watch for dynamically added images (lazy-rendered)
-    const mutation = new MutationObserver(() => {
-      attachToImages();
-      snapToBottom();
-    });
-    mutation.observe(container, { childList: true, subtree: true });
-    const onScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      if (scrollTop + clientHeight < scrollHeight - 60) {
-        isInitialLoad.current = false;
-      }
-    };
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      mutation.disconnect();
-      container.removeEventListener("scroll", onScroll);
-    };
-  }, [messages]);
+  // Initial positioning at the bottom is handled by VirtualMessageList (initialTopMostItemIndex +
+  // a short stick-to-bottom window while media settles); the list itself virtualizes scrolling.
   // Scroll detection for chat messages - handled by VirtualMessageList's onScrollStateChange
   // Jump functions
   const virtualListRef = useRef<VirtualMessageListRef>(null);
@@ -1666,7 +1667,6 @@ function App() {
       });
       console.log("[LOAD_MESSAGES] Received", initialData.messages.length, "messages");
       if (token.cancelled) return;
-      shouldScrollToBottom.current = true;
       // Set last 100 messages (most recent) immediately for fast render - force new array
       setMessages([...initialData.messages]);
       console.log("[LOAD_MESSAGES] Messages state updated");
@@ -3837,8 +3837,6 @@ useEffect(() => {
                     const isImageFile = isFileMsg && IMAGE_EXTS.has(effExt);
                     const isVideoFile = isFileMsg && VIDEO_EXTS.has(effExt);
                     const isAudioFile = isFileMsg && AUDIO_EXTS.has(effExt);
-                    if (isFileMsg && msg.media?.includes("DOC-20260504")) {
-                    }
                     return (
                       <div key={`${idx}-${msg.media}`}>
                         {showDate && (
@@ -4132,7 +4130,6 @@ useEffect(() => {
                     );
                   }}
                   />
-                  <div ref={messagesEndRef} />
                 </>
               )}
               </div>
