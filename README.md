@@ -29,12 +29,24 @@ Built with **Tauri 2**, **React 19**, and **Rust**.
 - Responsive window sizing — the two-pane layout adapts down to half-screen widths (scaled to your
   actual monitor, not a fixed breakpoint) before falling back to single-pane navigation
 
-## Chats too large to export the normal way
+## Chat export won't send? (large chats, 2 GB+)
 
-Very large WhatsApp exports (2 GB and up) often fail to get off the phone. For those, use the Android
-companion app, [whatsapp-archive-downloader](https://github.com/ramondw2000/whatsapp-archive-downloader):
-share the export zip to it to save the zip on the phone (in `Downloads/WhatsAppArchives`), then copy it to
-the PC (for example over USB) and import it here.
+WhatsApp often refuses to send exports of very large chats (roughly 2 GB and up, with media): the export
+hangs, fails, or never arrives by email, Drive or Bluetooth, which leaves the chat stuck on the phone.
+
+The solution is the Android companion app,
+[whatsapp-archive-downloader](https://github.com/ramondw2000/whatsapp-archive-downloader). It skips
+email and cloud uploads entirely and saves the export straight to your phone's storage:
+
+1. Install the companion app on your Android phone.
+2. In WhatsApp, open the chat → **⋮ More** → **Export chat** → **Include media**.
+3. In the share menu, pick **Archive Downloader**. The zip is saved to
+   `Downloads/WhatsAppArchives` with a progress bar. You can leave the app while it copies.
+4. Copy the zip from `Downloads/WhatsAppArchives` to your PC (for example over USB).
+5. Import the zip here as usual.
+
+> The companion app's repository is private while it's being finished and will be made public once it's
+> ready, so the link above won't work for everyone yet.
 
 ## Prerequisites
 
